@@ -22,19 +22,26 @@ def read_transcription(wav_file):
     
     return transcription
 
-def run_exp(num_test=None):
+def run_exp(wfst,num_test):
     '''
     Run a test on the test data, record the WER, speed and memory cost.
+    param wfst (pywrapfst._MutableFst)
+    param num_test (int)
     '''
-    f = create_wfst()
-    decoder = MyViterbiDecoder(f, '')
+    f = wfst
     
     # store the error counts and word counts
     tot_errors,tot_words,computation_counter = 0,0,0
     
     num_audio = len(glob.glob('/group/teaching/asr/labs/recordings/*.wav'))
-    if num_test==None:
-        num_test = num_audio
+    
+    # take all if num_test is None
+    dummy_test = False
+    if num_test==0:
+        print("dummy test")
+        num_test = 1
+        dummy_test = True
+        
         
     # progress bar
     with tqdm(total=num_test) as progressbar:
@@ -45,6 +52,13 @@ def run_exp(num_test=None):
         for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav')[:num_test]:
             # update progress bar
             progressbar.update(1)
+            print(wav_file)
+            
+            if dummy_test:
+                wav_file = ''
+                transcription = "peppers"
+            else:
+                transcription = read_transcription(wav_file)
             
             # decoder.om.load_audio(wav_file)
             decoder = MyViterbiDecoder(f, wav_file)
@@ -56,7 +70,8 @@ def run_exp(num_test=None):
             # save the forward computation counter
             computation_counter += decoder.forward_counter
 
-            transcription = read_transcription(wav_file)
+            print("recognized words: ",words)
+            print("correct words: ", transcription)
             error_counts = wer.compute_alignment_errors(transcription, words)
             word_count = len(transcription.split())
 
