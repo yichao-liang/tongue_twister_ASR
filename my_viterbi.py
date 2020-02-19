@@ -22,7 +22,7 @@ def read_transcription(wav_file):
     
     return transcription
 
-def run_exp():
+def run_exp(num_test=None):
     '''
     Run a test on the test data, record the WER, speed and memory cost.
     '''
@@ -33,14 +33,16 @@ def run_exp():
     tot_errors,tot_words,computation_counter = 0,0,0
     
     num_audio = len(glob.glob('/group/teaching/asr/labs/recordings/*.wav'))
-    
+    if num_test==None:
+        num_test = num_audio
+        
     # progress bar
-    with tqdm(total=num_audio) as progressbar:
+    with tqdm(total=num_test) as progressbar:
         
         # start a timer
         start = time.time()
         
-        for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
+        for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav')[:num_test]:
             # update progress bar
             progressbar.update(1)
             
@@ -73,7 +75,7 @@ def run_exp():
     Number of forward computations: {},
     Number of states and arcs: {} {},
     Number of errors {} in {} words
-    """.format(time_cost,num_states,num_arcs,tot_errors,tot_words))     # you'll need to accumulate these to produce an overall Word Error Rate
+    """.format(time_cost,computation_counter,num_states,num_arcs,tot_errors,tot_words))     # you'll need to accumulate these to produce an overall Word Error Rate
         
         
 def count_states_arcs (f):
