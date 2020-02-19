@@ -153,15 +153,11 @@ class ObservationModel:
 
     def dummy_observation_probability(self, hmm_label, t):
         """ Computes b_j(t) where j is the current state
-
         This is just a dummy version!  In later labs we'll generate
         probabilities for real speech frames.
-
         You don't need to look at this function in detail.
-
         Args: hmm_label (str): the HMM state label, j.  We'll use string form: "p_1", "p_2", "eh_1" etc
               t (int) : current time step, starting at 1
-
         Returns:
               p (float): the observation probability p(x_t | q_t = hmm_label)
         """
