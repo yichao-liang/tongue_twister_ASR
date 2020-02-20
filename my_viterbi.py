@@ -7,6 +7,7 @@ import os
 import wer
 import observation_model
 import openfst_python as fst
+import pdb
 from tqdm import tqdm_notebook as tqdm
 import time
 
@@ -52,7 +53,6 @@ def run_exp(wfst,num_test):
         for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav')[:num_test]:
             # update progress bar
             progressbar.update(1)
-            print(wav_file)
             
             if dummy_test:
                 wav_file = ''
@@ -61,8 +61,10 @@ def run_exp(wfst,num_test):
                 transcription = read_transcription(wav_file)
             
             # decoder.om.load_audio(wav_file)
+            print(wav_file)
             decoder = MyViterbiDecoder(f, wav_file)
-
+            
+            pdb.set_trace()
             decoder.decode()
             (state_path, words) = decoder.backtrace()  # you'll need to modify the backtrace() from Lab 4
                                                        # to return the words along the best path
@@ -70,7 +72,7 @@ def run_exp(wfst,num_test):
             # save the forward computation counter
             computation_counter += decoder.forward_counter
 
-            print("recognized words: ",words)
+            print("recognized words: ",state_path, words)
             print("correct words: ", transcription)
             error_counts = wer.compute_alignment_errors(transcription, words)
             word_count = len(transcription.split())
@@ -238,7 +240,8 @@ def generate_word_wfst(word):
         # note: new current_state is now set to the final state of the previous phone WFST
         
     f.set_final(current_state)
-    
+    f.set_input_symbols(state_table)
+    f.set_output_symbols(phone_table)
     return f
 
 def create_wfst():
@@ -407,6 +410,7 @@ class MyViterbiDecoder:
                             # store the output labels encountered too
                             if arc.olabel !=0:
                                 self.W[t][j] = [arc.olabel]
+        
                             
     
     def finalise_decoding(self):
@@ -444,12 +448,16 @@ class MyViterbiDecoder:
         
         t = self.om.observation_length()   # ie T
         j = best_final_state
+        prev_j = -1
         while t >= 0:
             i = self.B[t][j]
             best_state_sequence.append(i)
-            best_out_sequence = self.W[t][j] + best_out_sequence  # computer scientists might like
+            if prev_j != j:
+                best_out_sequence = self.W[t][j] + best_out_sequence  # computer scientists might like
                                                                                 # to make this more efficient!
+            
             # continue the backtrace at state i, time t-1
+            prev_j = j
             j = i  
             t-=1
             
