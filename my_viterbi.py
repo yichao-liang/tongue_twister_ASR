@@ -22,7 +22,7 @@ def read_transcription(wav_file):
     
     return transcription
 
-def run_exp(wfst,num_test):
+def run_exp(wfst,num_test,beam_width=0):
     '''
     Run a test on the test data, record the WER, speed and memory cost.
     param wfst (pywrapfst._MutableFst)
@@ -63,7 +63,7 @@ def run_exp(wfst,num_test):
             # decoder.om.load_audio(wav_file)
             decoder = MyViterbiDecoder(f, wav_file)
 
-            decoder.decode()
+            decoder.decode(beam_width = beam_width)
             (state_path, words) = decoder.backtrace()  # you'll need to modify the backtrace() from Lab 4
                                                        # to return the words along the best path
 
@@ -91,6 +91,7 @@ def run_exp(wfst,num_test):
     Number of states and arcs: {} {},
     Number of errors {} in {} words
     """.format(time_cost,computation_counter,num_states,num_arcs,tot_errors,tot_words))     # you'll need to accumulate these to produce an overall Word Error Rate
+    return time_cost,computation_counter,num_states,num_arcs,tot_errors,tot_words
         
         
 def count_states_arcs (f):
@@ -385,7 +386,6 @@ def generate_multiple_words_wfst_word_output(word_list):
     
     return f
 
-
 class MyViterbiDecoder:
     
     NLL_ZERO = 1e10  # define a constant representing -log(0).  This is really infinite, but approximate
@@ -397,7 +397,7 @@ class MyViterbiDecoder:
         self.om = observation_model.ObservationModel()
         self.f = f
         self.forward_counter = 0
-        
+
         if audio_file_name:
             self.om.load_audio(audio_file_name)
         else:
@@ -458,7 +458,6 @@ class MyViterbiDecoder:
         
             for arc in self.f.arcs(i):
                 self.forward_counter += 1 # increase the forward counter by 1
-                
                 if arc.ilabel == 0:     # if <eps> transition
                   
                     j = arc.nextstate   # ID of next state  
@@ -479,14 +478,17 @@ class MyViterbiDecoder:
                         # and save the output labels encountered - this is a list, because
                         # there could be multiple output labels (in the case of <eps> arcs)
                         if arc.olabel != 0:
-                            self.W[t][j] = self.W[t][i] + [arc.olabel] 
+                            self.W[t][self.B[t][j]] += [arc.olabel] 
                         
                         if j not in states_to_traverse:
                             states_to_traverse.append(j)
 
     
     def forward_step(self, t):
-          
+        
+        # init best_cost, which will be used in beam search. The cost larger than `best_cost` + `beam_width` (for pruning).
+        best_cost = self.NLL_ZERO
+        
         for i in self.f.states():
             
             if not self.V[t-1][i] == self.NLL_ZERO:   # no point in propagating states with zero probability
@@ -498,9 +500,18 @@ class MyViterbiDecoder:
                         tp = float(arc.weight)  # transition prob
                         ep = -self.om.log_observation_probability(self.f.input_symbols().find(arc.ilabel), t)  # emission negative log prob
                         prob = tp + ep + self.V[t-1][i] # they're logs
-                        if prob < self.V[t][j]:
+                        
+                        # if the nega logprob is larger than the lowest at this time step plus the beam width, does nothing.
+                        if prob > best_cost + self.beam_width:
+                            continue
+                        
+                        # else if it is lower than the current viterbi value at time t state j, update the viterbi value and write the backpointer...
+                        elif prob < self.V[t][j]:
                             self.V[t][j] = prob
                             self.B[t][j] = i
+                            
+                            # update the BEST_COST
+                            best_cost = prob
                             
                             # store the output labels encountered too
                             if arc.olabel !=0:
@@ -525,9 +536,11 @@ class MyViterbiDecoder:
             print("No path got to the end of the observations.")
         
         
-    def decode(self):
+    def decode(self, beam_width=0):
         self.initialise_decoding()
         t = 1
+        # add instance variable: beam_width 
+        self.beam_width=beam_width
         while t <= self.om.observation_length():
             self.forward_step(t)
             self.traverse_epsilon_arcs(t)
@@ -542,12 +555,16 @@ class MyViterbiDecoder:
         
         t = self.om.observation_length()   # ie T
         j = best_final_state
+        prev_j = -1
         while t >= 0:
             i = self.B[t][j]
             best_state_sequence.append(i)
-            best_out_sequence = self.W[t][j] + best_out_sequence  # computer scientists might like
+            if prev_j != j:
+                best_out_sequence = self.W[t][j] + best_out_sequence  # computer scientists might like
                                                                                 # to make this more efficient!
+
             # continue the backtrace at state i, time t-1
+            prev_j = j
             j = i  
             t-=1
             
@@ -555,5 +572,5 @@ class MyViterbiDecoder:
         
         # convert the best output sequence from FST integer labels into strings
         best_out_sequence = ' '.join([ self.f.output_symbols().find(label) for label in best_out_sequence])
-        
+        print(best_state_sequence)
         return (best_state_sequence, best_out_sequence)
