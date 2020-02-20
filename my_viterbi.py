@@ -305,7 +305,7 @@ def generate_multiple_words_wfst(word_list):
 
 def generate_phone_wfst_no_output(f, start_state, phone, n, counter, word_len, word):
     """
-    Generate a WFST representating an n-state left-to-right phone HMM
+    Generate a WFST representating an n-state left-to-right phone HMM, but without outputting the phone at the final state
     
     Args:
         f (fst.Fst()): an FST object, assumed to exist already
@@ -345,7 +345,8 @@ def generate_phone_wfst_no_output(f, start_state, phone, n, counter, word_len, w
     return current_state
 
 def generate_multiple_words_wfst_word_output(word_list):
-    """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs.
+    """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs, where the last state of the last phone
+    output the entire word.
         This will currently output word labels.  
         Exercise: could you modify this function and the one above to output a single phone label instead?
     
