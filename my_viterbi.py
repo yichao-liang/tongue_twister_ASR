@@ -245,9 +245,9 @@ def create_wfst():
     lex = parse_lexicon('lexicon.txt')
     word_table, phone_table, state_table = generate_symbol_tables(lex)
     
-    f = generate_multiple_words_wfst([k for k in lex.keys()])
+    f = generate_multiple_words_wfst_word_output([k for k in lex.keys()])
     f.set_input_symbols(state_table)
-    f.set_output_symbols(phone_table)
+    f.set_output_symbols(word_table)
     return f
 
 def generate_multiple_words_wfst(word_list):
