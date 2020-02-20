@@ -22,11 +22,12 @@ def read_transcription(wav_file):
     
     return transcription
 
-def run_exp(wfst,num_test,beam_width=0):
+def run_exp(wfst,num_test,prob_beam_width=0):
     '''
     Run a test on the test data, record the WER, speed and memory cost.
     param wfst (pywrapfst._MutableFst)
-    param num_test (int)
+    param num_test (int) The number of tests for the experiment. num_test=0 means using the dummy test.
+    param prob_beam_width (float) The pruning beam width in real probability values ranging [0,1].
     '''
     f = wfst
     
@@ -63,7 +64,7 @@ def run_exp(wfst,num_test,beam_width=0):
             # decoder.om.load_audio(wav_file)
             decoder = MyViterbiDecoder(f, wav_file)
 
-            decoder.decode(beam_width = beam_width)
+            decoder.decode(beam_width = math.log2(prob_beam_width))
             (state_path, words) = decoder.backtrace()  # you'll need to modify the backtrace() from Lab 4
                                                        # to return the words along the best path
 
