@@ -30,7 +30,6 @@ def generate_phone_wfst_new_weights(f, start_state, phone, n, counter, word_len,
         
         in_label = state_table.find('{}_{}'.format(phone, i))
         try:
-#             print(-math.log(weight_dictionary[str(current_state)+str(current_state)]))
             sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
         except KeyError:
             sl_weight = fst.Weight('log', -math.log(0.1))  # weight for self-loop
