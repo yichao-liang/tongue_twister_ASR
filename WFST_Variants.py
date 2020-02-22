@@ -309,43 +309,74 @@ def generate_multiple_words_wfst_bigrams(word_list, weight_dictionary, bigram_di
     return f
  
 
-def create_bigram_probabilities():
+def create_bigram_probabilities(n=None):
     unigram_counts = {'<s>':0}
     bigram_counts = {}
-    for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
-        unigram_counts['<s>']+=1
-        transcription = read_transcription(wav_file).split()
-        for index,word in enumerate(transcription):
-            if word in unigram_counts:
-                unigram_counts[word] += 1
-            else:
-                unigram_counts[word] = 1
-            if index==0:
-                try:
-                    bigram_counts['<s>'+'/'+word]+=1
-                except KeyError:
-                    bigram_counts['<s>'+'/'+word]=1
-            elif index==len(transcription)-1:
-                try:
-                    bigram_counts[transcription[index-1]+'/'+word] += 1
-                except KeyError:
-                    bigram_counts[transcription[index-1]+'/'+word] = 1
-                try:
-                    bigram_counts[word+'/'+'<end>'] += 1
-                except KeyError:
-                    bigram_counts[word+'/'+'<end>'] = 1
-            else:
-                try:
-                    bigram_counts[transcription[index-1]+'/'+word] += 1
-                except KeyError:
-                    bigram_counts[transcription[index-1]+'/'+word] = 1
-    
-    bigram_dict = {k:v/unigram_counts[k.split('/')[0]] for k,v in bigram_counts.items()}
+    if n==None:
+        for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
+            unigram_counts['<s>']+=1
+            transcription = read_transcription(wav_file).split()
+            for index,word in enumerate(transcription):
+                if word in unigram_counts:
+                    unigram_counts[word] += 1
+                else:
+                    unigram_counts[word] = 1
+                if index==0:
+                    try:
+                        bigram_counts['<s>'+'/'+word]+=1
+                    except KeyError:
+                        bigram_counts['<s>'+'/'+word]=1
+                elif index==len(transcription)-1:
+                    try:
+                        bigram_counts[transcription[index-1]+'/'+word] += 1
+                    except KeyError:
+                        bigram_counts[transcription[index-1]+'/'+word] = 1
+                    try:
+                        bigram_counts[word+'/'+'<end>'] += 1
+                    except KeyError:
+                        bigram_counts[word+'/'+'<end>'] = 1
+                else:
+                    try:
+                        bigram_counts[transcription[index-1]+'/'+word] += 1
+                    except KeyError:
+                        bigram_counts[transcription[index-1]+'/'+word] = 1
+    else:
+        counter = 0
+        for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
+            if counter == n:
+                break
+            unigram_counts['<s>']+=1
+            transcription = read_transcription(wav_file).split()
+            for index,word in enumerate(transcription):
+                if word in unigram_counts:
+                    unigram_counts[word] += 1
+                else:
+                    unigram_counts[word] = 1
+                if index==0:
+                    try:
+                        bigram_counts['<s>'+'/'+word]+=1
+                    except KeyError:
+                        bigram_counts['<s>'+'/'+word]=1
+                elif index==len(transcription)-1:
+                    try:
+                        bigram_counts[transcription[index-1]+'/'+word] += 1
+                    except KeyError:
+                        bigram_counts[transcription[index-1]+'/'+word] = 1
+                    try:
+                        bigram_counts[word+'/'+'<end>'] += 1
+                    except KeyError:
+                        bigram_counts[word+'/'+'<end>'] = 1
+                else:
+                    try:
+                        bigram_counts[transcription[index-1]+'/'+word] += 1
+                    except KeyError:
+                        bigram_counts[transcription[index-1]+'/'+word] = 1
+                counter += 1
+            
+    # Create bigram probabilities from accumulated counts, discounting uniformly 0.1 for silence (the value can be changed)
+    bigram_dict = {k:(v/unigram_counts[k.split('/')[0]])-(0.1/len(unigram_counts)) for k,v in bigram_counts.items()}
             
     return bigram_dict
-
-bigram_probability = create_bigram_probabilities()
-print(bigram_probability)
 
 # Try with 2 words to check the result
 
