@@ -22,12 +22,12 @@ def read_transcription(wav_file):
     
     return transcription
 
-def run_exp(wfst,num_test,prob_beam_width=0):
+def run_exp(wfst,num_test,beam_width=1e10):
     '''
     Run a test on the test data, record the WER, speed and memory cost.
     param wfst (pywrapfst._MutableFst)
     param num_test (int) The number of tests for the experiment. num_test=0 means using the dummy test.
-    param prob_beam_width (float) The pruning beam width in real probability values ranging [0,1].
+    param prob_beam_width (float) The pruning beam width in negative log probability.
     '''
     f = wfst
     
@@ -64,7 +64,7 @@ def run_exp(wfst,num_test,prob_beam_width=0):
             # decoder.om.load_audio(wav_file)
             decoder = MyViterbiDecoder(f, wav_file)
 
-            decoder.decode(beam_width = math.log2(prob_beam_width))
+            decoder.decode(beam_width = beam_width)
             (state_path, words) = decoder.backtrace()  # you'll need to modify the backtrace() from Lab 4
                                                        # to return the words along the best path
 
@@ -113,280 +113,283 @@ def count_states_arcs (f):
             
     return num_states,num_arcs
 
-def parse_lexicon(lex_file):
-    """
-    Parse the lexicon file and return it in dictionary form.
-    
-    Args:
-        lex_file (str): filename of lexicon file with structure '<word> <phone1> <phone2>...'
-                        eg. peppers p eh p er z
 
-    Returns:
-        lex (dict): dictionary mapping words to list of phones
-    """
+class MyWFST:
     
-    lex = {}  # create a dictionary for the lexicon entries (this could be a problem with larger lexica)
-    with open(lex_file, 'r') as f:
-        for line in f:
-            line = line.split()  # split at each space
-            lex[line[0]] = line[1:]  # first field the word, the rest is the phones
-    return lex
+    def __init__(self):
+        self.parse_lexicon('lexicon.txt')
+        self.generate_symbol_tables()
+        
+    def create_wfst_word_output(self, lm=None, tree_structured=False, look_ahead=False):
+        '''
+        wfst with word output
+        '''
+        f = self.generate_multiple_words_wfst_word_output([k for k in self.lex.keys()])
+        f.set_input_symbols(self.state_table)
+        f.set_output_symbols(self.word_table)
+        print('done')
+        return f
 
-def generate_symbol_tables(lexicon, n=3):
-    '''
-    Return word, phone and state symbol tables based on the supplied lexicon
-        
-    Args:
-        lexicon (dict): lexicon to use, created from the parse_lexicon() function
-        n (int): number of states for each phone HMM
-        
-    Returns:
-        word_table (fst.SymbolTable): table of words
-        phone_table (fst.SymbolTable): table of phones
-        state_table (fst.SymbolTable): table of HMM phone-state IDs
-    '''
+    def create_wfst(self):
+        '''
+        wfst with phone output
+        '''
+        self.parse_lexicon('lexicon.txt')
+        self.generate_symbol_tables()
+
+        f = self.generate_multiple_words_wfst([k for k in lex.keys()])
+        f.set_input_symbols(self.state_table)
+        f.set_output_symbols(self.phone_table)
+        return f
     
-    state_table = fst.SymbolTable()
-    phone_table = fst.SymbolTable()
-    word_table = fst.SymbolTable()
+    def parse_lexicon(self,lex_file):
+        """
+        Parse the lexicon file and return it in dictionary form.
+
+        Args:
+            lex_file (str): filename of lexicon file with structure '<word> <phone1> <phone2>...'
+                            eg. peppers p eh p er z
+
+        Returns:
+            lex (dict): dictionary mapping words to list of phones
+        """
     
-    # add empty <eps> symbol to all tables
-    state_table.add_symbol('<eps>')
-    phone_table.add_symbol('<eps>')
-    word_table.add_symbol('<eps>')
-    
-    for word, phones  in lexicon.items():
-        
-        word_table.add_symbol(word)
-        
-        for p in phones: # for each phone
-            
-            phone_table.add_symbol(p)
-            for i in range(1,n+1): # for each state 1 to n
-                state_table.add_symbol('{}_{}'.format(p, i))
-            
-    return word_table, phone_table, state_table
+        self.lex = {}  # create a dictionary for the lexicon entries (this could be a problem with larger lexica)
+        with open(lex_file, 'r') as f:
+            for line in f:
+                line = line.split()  # split at each space
+                self.lex[line[0]] = line[1:]  # first field the word, the rest is the phones
 
 
-lex = parse_lexicon('lexicon.txt')
-word_table, phone_table, state_table = generate_symbol_tables(lex)
 
-def generate_phone_wfst(f, start_state, phone, n):
-    """
-    Generate a WFST representating an n-state left-to-right phone HMM
-    
-    Args:
-        f (fst.Fst()): an FST object, assumed to exist already
-        start_state (int): the index of the first state, assmed to exist already
-        phone (str): the phone label 
-        n (int): number of states for each phone HMM
-        
-    Returns:
-        the final state of the FST
-    """
-    
-    current_state = start_state
-    
-    for i in range(1, n+1):
-        
-        in_label = state_table.find('{}_{}'.format(phone, i))
-        
-        sl_weight = fst.Weight('log', -math.log(0.1))  # weight for self-loop
-        # self-loop back to current state
-        f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
-        
-        # transition to next state
-        
-        # we want to output the phone label on the final state
-        # note: if outputting words instead this code should be modified
-        if i == n:
-            out_label = phone_table.find(phone)
-        else:
-            out_label = 0   # output empty <eps> label
-            
-        next_state = f.add_state()
-        next_weight = fst.Weight('log', -math.log(0.9)) # weight to next state
-        f.add_arc(current_state, fst.Arc(in_label, out_label, next_weight, next_state))    
-       
-        current_state = next_state
-        
-    return current_state
+    def generate_symbol_tables(self, n=3):
+        '''
+        Return word, phone and state symbol tables based on the supplied lexicon
 
-def generate_word_wfst(word):
-    """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs.
-        This will currently output word labels.  
-        Exercise: could you modify this function and the one above to output a single phone label instead?
-    
-    Args:
-        word (str): the word to generate
-        
-    Returns:
-        the constructed WFST
-    
-    """
-    f = fst.Fst('log')
-    
-    # create the start state
-    start_state = f.add_state()
-    f.set_start(start_state)
-    
-    current_state = start_state
-    
-    # iterate over all the phones in the word
-    for phone in lex[word]:   # will raise an exception if word is not in the lexicon
-        
-        current_state = generate_phone_wfst(f, current_state, phone, 3)
-    
-        # note: new current_state is now set to the final state of the previous phone WFST
-        
-    f.set_final(current_state)
-    
-    return f
+        Args:
+            lexicon (dict): lexicon to use, created from the parse_lexicon() function
+            n (int): number of states for each phone HMM
 
-def create_wfst():
-    '''
-    wfst with phone output
-    '''
-    lex = parse_lexicon('lexicon.txt')
-    word_table, phone_table, state_table = generate_symbol_tables(lex)
-    
-    f = generate_multiple_words_wfst([k for k in lex.keys()])
-    f.set_input_symbols(state_table)
-    f.set_output_symbols(phone_table)
-    return f
+        Returns:
+            word_table (fst.SymbolTable): table of words
+            phone_table (fst.SymbolTable): table of phones
+            state_table (fst.SymbolTable): table of HMM phone-state IDs
+        '''
 
-def create_wfst_word_output():
-    '''
-    wfst with word output
-    '''
-    lex = parse_lexicon('lexicon.txt')
-    word_table, phone_table, state_table = generate_symbol_tables(lex)
-    
-    f = generate_multiple_words_wfst_word_output([k for k in lex.keys()])
-    f.set_input_symbols(state_table)
-    f.set_output_symbols(word_table)
-    return f
+        self.state_table = fst.SymbolTable()
+        self.phone_table = fst.SymbolTable()
+        self.word_table = fst.SymbolTable()
 
-def generate_multiple_words_wfst(word_list):
-    """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs.
-        This will currently output word labels.  
-        Exercise: could you modify this function and the one above to output a single phone label instead?
+        # add empty <eps> symbol to all tables
+        self.state_table.add_symbol('<eps>')
+        self.phone_table.add_symbol('<eps>')
+        self.word_table.add_symbol('<eps>')
+
+        for word, phones  in self.lex.items():
+
+            self.word_table.add_symbol(word)
+
+            for p in phones: # for each phone
+
+                self.phone_table.add_symbol(p)
+                for i in range(1,n+1): # for each state 1 to n
+                    self.state_table.add_symbol('{}_{}'.format(p, i))
+
+        return self.word_table, self.phone_table, self.state_table
     
-    Args:
-        word (str): the word to generate
-        
-    Returns:
-        the constructed WFST
+    def generate_multiple_words_wfst_word_output(self,word_list):
+        """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs, where the last state of the last phone
+        output the entire word.
+            This will currently output word labels.  
+            Exercise: could you modify this function and the one above to output a single phone label instead?
+
+        Args:
+            word (str): the word to generate
+
+        Returns:
+            the constructed WFST
+
+        """
+        if isinstance(word_list, str):
+            word_list = word_list.split()
+        f = fst.Fst("log")
+        start_state = f.add_state()
+        f.set_start(start_state)
+        for word in word_list:
+            # create the start state
+
+            current_state = f.add_state()
+
+            f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1/len(word_list))), current_state))
+
+            counter = 1
+
+            # iterate over all the phones in the word
+            for phone in self.lex[word]:   # will raise an exception if word is not in the lexicon
+
+                current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word)
+
+                counter += 1
+
+                # note: new current_state is now set to the final state of the previous phone WFST
+
+            f.add_arc(current_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1)), start_state))
+
+            f.set_final(current_state)
+
+        return f
+
+    def generate_multiple_words_wfst(self,word_list):
+        """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs.
+            This will currently output word labels.  
+            Exercise: could you modify this function and the one above to output a single phone label instead?
+
+        Args:
+            word (str): the word to generate
+
+        Returns:
+            the constructed WFST
+
+        """
+        if isinstance(word_list, str):
+            word_list = word_list.split()
+        f = fst.Fst("log")
+        start_state = f.add_state()
+        f.set_start(start_state)
+        for word in word_list:
+            # create the start state
+
+            current_state = f.add_state()
+
+            f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1/len(word_list))), current_state))
+
+            # iterate over all the phones in the word
+            for phone in lex[word]:   # will raise an exception if word is not in the lexicon
+
+                current_state = self.generate_phone_wfst(f, current_state, phone, 3)
+
+
+                # note: new current_state is now set to the final state of the previous phone WFST
+
+            f.add_arc(current_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1)), start_state))
+
+            f.set_final(current_state)
+
+        return f
     
-    """
-    if isinstance(word_list, str):
-        word_list = word_list.split()
-    f = fst.Fst("log")
-    start_state = f.add_state()
-    f.set_start(start_state)
-    for word in word_list:
+    def generate_phone_wfst_no_output(self, f, start_state, phone, n, counter, word_len, word):
+        """
+        Generate a WFST representating an n-state left-to-right phone HMM, but without outputting the phone at the final state
+
+        Args:
+            f (fst.Fst()): an FST object, assumed to exist already
+            start_state (int): the index of the first state, assmed to exist already
+            phone (str): the phone label 
+            n (int): number of states for each phone HMM
+
+        Returns:
+            the final state of the FST
+        """
+
+        current_state = start_state
+
+        for i in range(1, n+1):
+
+            in_label = self.state_table.find('{}_{}'.format(phone, i))
+
+            sl_weight = fst.Weight('log', -math.log(0.1))  # weight for self-loop
+            # self-loop back to current state
+            f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
+
+            # transition to next state
+
+            # we want to output the phone label on the final state
+            # note: if outputting words instead this code should be modified
+            if i == n and counter==word_len:
+                out_label = self.word_table.find(word)
+            else:
+                out_label = 0   # output empty <eps> label
+
+            next_state = f.add_state()
+            next_weight = fst.Weight('log', -math.log(0.9)) # weight to next state
+            f.add_arc(current_state, fst.Arc(in_label, out_label, next_weight, next_state))    
+
+            current_state = next_state
+
+        return current_state
+    
+    
+    def generate_phone_wfst(self,f, start_state, phone, n):
+        """
+        Generate a WFST representating an n-state left-to-right phone HMM
+
+        Args:
+            f (fst.Fst()): an FST object, assumed to exist already
+            start_state (int): the index of the first state, assmed to exist already
+            phone (str): the phone label 
+            n (int): number of states for each phone HMM
+
+        Returns:
+            the final state of the FST
+        """
+    
+        current_state = start_state
+
+        for i in range(1, n+1):
+
+            in_label = state_table.find('{}_{}'.format(phone, i))
+
+            sl_weight = fst.Weight('log', -math.log(0.1))  # weight for self-loop
+            # self-loop back to current state
+            f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
+
+            # transition to next state
+
+            # we want to output the phone label on the final state
+            # note: if outputting words instead this code should be modified
+            if i == n:
+                out_label = phone_table.find(phone)
+            else:
+                out_label = 0   # output empty <eps> label
+
+            next_state = f.add_state()
+            next_weight = fst.Weight('log', -math.log(0.9)) # weight to next state
+            f.add_arc(current_state, fst.Arc(in_label, out_label, next_weight, next_state))    
+
+            current_state = next_state
+
+        return current_state
+    
+    def generate_word_wfst(word):
+        """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs.
+            This will currently output word labels.  
+            Exercise: could you modify this function and the one above to output a single phone label instead?
+
+        Args:
+            word (str): the word to generate
+
+        Returns:
+            the constructed WFST
+
+        """
+        f = fst.Fst('log')
+
         # create the start state
-        
-        current_state = f.add_state()
-        
-        f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1/len(word_list))), current_state))
-    
+        start_state = f.add_state()
+        f.set_start(start_state)
+
+        current_state = start_state
+
         # iterate over all the phones in the word
         for phone in lex[word]:   # will raise an exception if word is not in the lexicon
-        
+
             current_state = generate_phone_wfst(f, current_state, phone, 3)
-            
-    
-            # note: new current_state is now set to the final state of the previous phone WFST
-        
-        f.add_arc(current_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1)), start_state))
-    
-        f.set_final(current_state)
-    
-    return f
 
-def generate_phone_wfst_no_output(f, start_state, phone, n, counter, word_len, word):
-    """
-    Generate a WFST representating an n-state left-to-right phone HMM, but without outputting the phone at the final state
-    
-    Args:
-        f (fst.Fst()): an FST object, assumed to exist already
-        start_state (int): the index of the first state, assmed to exist already
-        phone (str): the phone label 
-        n (int): number of states for each phone HMM
-        
-    Returns:
-        the final state of the FST
-    """
-    
-    current_state = start_state
-    
-    for i in range(1, n+1):
-        
-        in_label = state_table.find('{}_{}'.format(phone, i))
-        
-        sl_weight = fst.Weight('log', -math.log(0.1))  # weight for self-loop
-        # self-loop back to current state
-        f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
-        
-        # transition to next state
-        
-        # we want to output the phone label on the final state
-        # note: if outputting words instead this code should be modified
-        if i == n and counter==word_len:
-            out_label = word_table.find(word)
-        else:
-            out_label = 0   # output empty <eps> label
-            
-        next_state = f.add_state()
-        next_weight = fst.Weight('log', -math.log(0.9)) # weight to next state
-        f.add_arc(current_state, fst.Arc(in_label, out_label, next_weight, next_state))    
-       
-        current_state = next_state
-        
-    return current_state
-
-def generate_multiple_words_wfst_word_output(word_list):
-    """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs, where the last state of the last phone
-    output the entire word.
-        This will currently output word labels.  
-        Exercise: could you modify this function and the one above to output a single phone label instead?
-    
-    Args:
-        word (str): the word to generate
-        
-    Returns:
-        the constructed WFST
-    
-    """
-    if isinstance(word_list, str):
-        word_list = word_list.split()
-    f = fst.Fst("log")
-    start_state = f.add_state()
-    f.set_start(start_state)
-    for word in word_list:
-        # create the start state
-        
-        current_state = f.add_state()
-        
-        f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1/len(word_list))), current_state))
-        
-        counter = 1
-    
-        # iterate over all the phones in the word
-        for phone in lex[word]:   # will raise an exception if word is not in the lexicon
-        
-            current_state = generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(lex[word]),word)
-            
-            counter += 1
-    
             # note: new current_state is now set to the final state of the previous phone WFST
-        
-        f.add_arc(current_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1)), start_state))
-    
+
         f.set_final(current_state)
-    
-    return f
+
+        return f
 
 class MyViterbiDecoder:
     
@@ -459,12 +462,14 @@ class MyViterbiDecoder:
                     continue
         
             for arc in self.f.arcs(i):
-                self.forward_counter += 1 # increase the forward counter by 1
+                
                 if arc.ilabel == 0:     # if <eps> transition
                   
                     j = arc.nextstate   # ID of next state  
                 
                     if self.V[t][j] > self.V[t][i] + float(arc.weight):
+                        
+                        self.forward_counter += 1 # increase the forward counter by 1
                         
                         # this means we've found a lower-cost path to
                         # state j at time t.  We might need to add it
@@ -480,7 +485,9 @@ class MyViterbiDecoder:
                         # and save the output labels encountered - this is a list, because
                         # there could be multiple output labels (in the case of <eps> arcs)
                         if arc.olabel != 0:
-                            self.W[t][self.B[t][j]] += [arc.olabel] 
+                             self.W[t][j] = self.W[t][i] + [arc.olabel]
+                        else:
+                             self.W[t][j] = self.W[t][i]
                         
                         if j not in states_to_traverse:
                             states_to_traverse.append(j)
@@ -518,6 +525,8 @@ class MyViterbiDecoder:
                             # store the output labels encountered too
                             if arc.olabel !=0:
                                 self.W[t][j] = [arc.olabel]
+                            else:
+                                self.W[t][j] = []
                             
     
     def finalise_decoding(self):
@@ -561,12 +570,11 @@ class MyViterbiDecoder:
         while t >= 0:
             i = self.B[t][j]
             best_state_sequence.append(i)
-            if prev_j != j:
-                best_out_sequence = self.W[t][j] + best_out_sequence  # computer scientists might like
+
+            best_out_sequence = self.W[t][j] + best_out_sequence  # computer scientists might like
                                                                                 # to make this more efficient!
 
             # continue the backtrace at state i, time t-1
-            prev_j = j
             j = i  
             t-=1
             
@@ -574,5 +582,5 @@ class MyViterbiDecoder:
         
         # convert the best output sequence from FST integer labels into strings
         best_out_sequence = ' '.join([ self.f.output_symbols().find(label) for label in best_out_sequence])
-        print(best_state_sequence)
+
         return (best_state_sequence, best_out_sequence)
