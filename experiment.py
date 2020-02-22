@@ -120,11 +120,11 @@ class MyWFST:
         self.parse_lexicon(lexicon)
         self.generate_symbol_tables()
         
-    def create_wfst_word_output(self, lm=None, tree_struc=False, weight_push=False):
+    def create_wfst_word_output(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1, 'next':0.9}):
         '''
         wfst with word output
         '''
-        f = self.generate_multiple_words_wfst_word_output([k for k in self.lex.keys()])
+        f = self.generate_multiple_words_wfst_word_output([k for k in self.lex.keys()], weight_dictionary)
         f.set_input_symbols(self.state_table)
         f.set_output_symbols(self.word_table)
         
@@ -183,25 +183,29 @@ class MyWFST:
         self.state_table = fst.SymbolTable()
         self.phone_table = fst.SymbolTable()
         self.word_table = fst.SymbolTable()
-
+    
         # add empty <eps> symbol to all tables
         self.state_table.add_symbol('<eps>')
         self.phone_table.add_symbol('<eps>')
         self.word_table.add_symbol('<eps>')
-
+    
         for word, phones  in self.lex.items():
-
-            self.word_table.add_symbol(word)
-
-            for p in phones: # for each phone
-
-                self.phone_table.add_symbol(p)
-                for i in range(1,n+1): # for each state 1 to n
-                    self.state_table.add_symbol('{}_{}'.format(p, i))
-
+            if word=='sil':
+                for i in range(1,6):
+                    self.state_table.add_symbol('{}_{}'.format('sil',i))
+        
+            else:
+                self.word_table.add_symbol(word)
+        
+                for p in phones: # for each phone
+            
+                    self.phone_table.add_symbol(p)
+                    for i in range(1,n+1): # for each state 1 to n
+                        self.state_table.add_symbol('{}_{}'.format(p, i))
+            
         return self.word_table, self.phone_table, self.state_table
     
-    def generate_multiple_words_wfst_word_output(self,word_list):
+    def generate_multiple_words_wfst_word_output(self,word_list,weight_dictionary):
         """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs, where the last state of the last phone
         output the entire word.
             This will currently output word labels.  
@@ -221,26 +225,35 @@ class MyWFST:
         f.set_start(start_state)
         for word in word_list:
             # create the start state
-
+        
             current_state = f.add_state()
-
+        
             f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1/len(word_list))), current_state))
-
-            counter = 1
-
-            # iterate over all the phones in the word
-            for phone in self.lex[word]:   # will raise an exception if word is not in the lexicon
-
-                current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word)
-
-                counter += 1
-
-                # note: new current_state is now set to the final state of the previous phone WFST
-
-            f.add_arc(current_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1)), start_state))
-
-            f.set_final(current_state)
-
+            if word != 'sil':
+                counter = 1
+    
+                # iterate over all the phones in the word
+                for phone in self.lex[word]:   # will raise an exception if word is not in the lexicon
+        
+                    current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word,   weight_dictionary)
+            
+                    counter += 1
+    
+                    # note: new current_state is now set to the final state of the previous phone WFST
+        
+                f.add_arc(current_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1)), start_state)) # Can always
+    
+                f.set_final(current_state)
+        
+            else:
+                # If word is silence: apply special silence topology defined in generate_phone_wfst_no_output()
+                # Arguments phone, n, word_len and weight_dictionary are obsolete in this case, they simply won't be used
+                current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary)
+            
+                f.add_arc(current_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1)), start_state))
+    
+                f.set_final(current_state)
+    
         return f
 
     def generate_multiple_words_wfst(self,word_list):
@@ -268,7 +281,7 @@ class MyWFST:
             f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1/len(word_list))), current_state))
 
             # iterate over all the phones in the word
-            for phone in lex[word]:   # will raise an exception if word is not in the lexicon
+            for phone in self.lex[word]:   # will raise an exception if word is not in the lexicon
 
                 current_state = self.generate_phone_wfst(f, current_state, phone, 3)
 
@@ -281,7 +294,7 @@ class MyWFST:
 
         return f
     
-    def generate_phone_wfst_no_output(self, f, start_state, phone, n, counter, word_len, word):
+    def generate_phone_wfst_no_output(self, f, start_state, phone, n, counter, word_len, word, weight_dictionary):
         """
         Generate a WFST representating an n-state left-to-right phone HMM, but without outputting the phone at the final state
 
@@ -295,33 +308,71 @@ class MyWFST:
             the final state of the FST
         """
 
-        current_state = start_state
-
-        for i in range(1, n+1):
-
-            in_label = self.state_table.find('{}_{}'.format(phone, i))
-
-            sl_weight = fst.Weight('log', -math.log(0.1))  # weight for self-loop
-            # self-loop back to current state
-            f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
-
-            # transition to next state
-
-            # we want to output the phone label on the final state
-            # note: if outputting words instead this code should be modified
-            if i == n and counter==word_len:
-                out_label = self.word_table.find(word)
-            else:
-                out_label = 0   # output empty <eps> label
-
-            next_state = f.add_state()
-            next_weight = fst.Weight('log', -math.log(0.9)) # weight to next state
-            f.add_arc(current_state, fst.Arc(in_label, out_label, next_weight, next_state))    
-
-            current_state = next_state
-
+        if word!='sil':
+        
+            current_state = start_state
+            for i in range(1, n+1):
+                in_label = self.state_table.find('{}_{}'.format(phone, i))
+                try:
+                    sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+                except KeyError:
+                    sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
+                    # self-loop back to current state
+                f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
+        
+                # transition to next state
+        
+                # we want to output the phone label on the final state
+                # note: if outputting words instead this code should be modified
+                if i == n and counter==word_len:
+                    out_label = self.word_table.find(word)
+                else:
+                    out_label = 0   # output empty <eps> label
+            
+                next_state = f.add_state()
+                try:
+                    next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                except KeyError:
+                    next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
+                f.add_arc(current_state, fst.Arc(in_label, out_label, next_weight, next_state))    
+       
+                current_state = next_state
+        else:
+            # following code creates the wfst for silence model, a five state model having states 2,3,4 ergodically connected
+            ergodic_states = {} # stores information for the ergodic states
+            self_weight = fst.Weight("log",-math.log(0.1)) # Self-loop probability
+            next_weight = fst.Weight("log",-math.log(0.9)) # Next state transition probability
+            current_state = start_state
+            for i in range(1,6):
+                # fill ergodic_states dictionary
+                if 1<i<5:
+                    ergodic_states[current_state] = self.state_table.find('{}_{}'.format('sil',i))
+                    next_state = f.add_state()
+                    if i==4:
+                        # State 4 has 4 possible transitions: self-loop, state 1, state 2 and state 5. They need to sum up to 1 (self-loop=0.1, other transitions: uniformly distributed --> (1-0.1)/3 = 0.3
+                        f.add_arc(current_state, fst.Arc(in_label, 0, fst.Weight("log",-math.log(0.3)), next_state))
+                    current_state = next_state
+                # state 1 and 5 behaves as normal left to right wfst
+                else:
+                    in_label = self.state_table.find('{}_{}'.format('sil',i))
+                    f.add_arc(current_state, fst.Arc(in_label,0,self_weight,current_state))
+                    next_state = f.add_state()
+                    f.add_arc(current_state, fst.Arc(in_label, 0, next_weight, next_state))
+                    current_state = next_state
+            # add ergodic connections for states 2,3,4
+            for key in ergodic_states.keys():
+                for key2 in ergodic_states.keys():
+                    if key==key2:
+                        f.add_arc(key, fst.Arc(ergodic_states[key],0,self_weight,key))
+                    elif ergodic_states[key]==self.state_table.find('sil_4'):
+                        # See above at i==4 condition
+                        f.add_arc(key, fst.Arc(ergodic_states[key],0,fst.Weight("log",-math.log(0.3)),key2))
+                    else:
+                        # All transitions need to sum up to 1, self-loop = 0.1, ergodic transitions: uniformly distributed--> (1-0.1)/2=0.45
+                        f.add_arc(key, fst.Arc(ergodic_states[key],0,fst.Weight("log",-math.log(0.45)),key2))
+            
         return current_state
-    
+     
     
     def generate_phone_wfst(self,f, start_state, phone, n):
         """
@@ -341,7 +392,7 @@ class MyWFST:
 
         for i in range(1, n+1):
 
-            in_label = state_table.find('{}_{}'.format(phone, i))
+            in_label = self.state_table.find('{}_{}'.format(phone, i))
 
             sl_weight = fst.Weight('log', -math.log(0.1))  # weight for self-loop
             # self-loop back to current state
@@ -352,7 +403,7 @@ class MyWFST:
             # we want to output the phone label on the final state
             # note: if outputting words instead this code should be modified
             if i == n:
-                out_label = phone_table.find(phone)
+                out_label = self.phone_table.find(phone)
             else:
                 out_label = 0   # output empty <eps> label
 
@@ -387,13 +438,308 @@ class MyWFST:
         # iterate over all the phones in the word
         for phone in lex[word]:   # will raise an exception if word is not in the lexicon
 
-            current_state = generate_phone_wfst(f, current_state, phone, 3)
+            current_state = self.generate_phone_wfst(f, current_state, phone, 3)
 
             # note: new current_state is now set to the final state of the previous phone WFST
 
         f.set_final(current_state)
 
         return f
+    
+    def read_transcription(self,wav_file):
+        """
+        Get the transcription corresponding to wav_file.
+        """
+    
+        transcription_file = os.path.splitext(wav_file)[0] + '.txt'
+    
+        with open(transcription_file, 'r') as f:
+            transcription = f.readline().strip()
+    
+        return transcription
+    
+    def create_unigram_probabilities(self,n=None, sil_probability=0.1):
+        unigram_counts = {}
+        tot = 0
+        if n==None:
+            for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
+                for word in self.read_transcription(wav_file).split():
+                    tot+=1
+                    if word in unigram_counts:
+                        unigram_counts[word] += 1
+                    else:
+                        unigram_counts[word] = 1
+        else:
+            counter = 0
+            for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
+                if counter == n:
+                    break
+                for word in self.read_transcription(wav_file).split():
+                    tot+=1
+                    if word in unigram_counts:
+                        unigram_counts[word] += 1
+                    else:
+                        unigram_counts[word] = 1
+                counter += 1
+        # Compute unigram probability for each word, discounting it uniformly by silence probability (0.1/len(unigram_counts))
+        self.unigram_probability = {k:((v/tot)-(sil_probability/len(unigram_counts))) for k,v in unigram_counts.items()}
+        return self.unigram_probability
+    
+    def generate_multiple_words_wfst_unigram(self, word_list, unigram_probabilities, weight_dictionary):
+        """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs.
+        This will currently output word labels.  
+        Exercise: could you modify this function and the one above to output a single phone label instead?
+    
+        Args:
+            word (str): the word to generate
+        
+        Returns:
+            the constructed WFST
+    
+        """
+        if isinstance(word_list, str):
+            word_list = word_list.split()
+        f = fst.Fst("log")
+        start_state = f.add_state()
+        f.set_start(start_state)
+        for word in word_list:
+            # create the start state
+            if word=='sil':
+            
+                current_state = f.add_state()
+            
+                f.add_arc(start_state, fst.Arc(0,0, fst.Weight("log",-math.log(0.1)), current_state)) # Probability to have a silence might be changed
+            
+            
+                # If word is silence: apply special silence topology defined in generate_phone_wfst_no_output()
+                # Arguments phone, n, word_len and weight_dictionary are obsolete in this case, they simply won't be used
+                current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary)
+            
+                f.add_arc(current_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1)), start_state))
+            
+                f.set_final(current_state)
+            
+        
+            else:
+            
+                current_state = f.add_state()
+        
+                f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(unigram_probabilities[word])), current_state))
+        
+                counter = 1
+    
+                # iterate over all the phones in the word
+                for phone in self.lex[word]:   # will raise an exception if word is not in the lexicon
+            
+                    current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary)
+            
+                    counter += 1
+    
+                # note: new current_state is now set to the final state of the previous phone WFST
+        
+                f.add_arc(current_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1)), start_state))
+    
+                f.set_final(current_state)
+        
+    
+        return f
+    
+    
+    def create_wfst_unigram(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}):
+        f = self.generate_multiple_words_wfst_unigram([k for k in self.lex.keys()], self.unigram_probability, weight_dictionary)
+        f.set_input_symbols(self.state_table)
+        f.set_output_symbols(self.word_table)
+        if tree_struc:
+            f = fst.determinize(f)
+        if weight_push:
+            f = f.push()
+        return f
+    
+    
+    def create_bigram_probabilities(self, n=None, sil_probability=0.1):
+        unigram_counts = {'<s>':0}
+        bigram_counts = {}
+        if n==None:
+            for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
+                unigram_counts['<s>']+=1
+                transcription = self.read_transcription(wav_file).split()
+                for index,word in enumerate(transcription):
+                    if word in unigram_counts:
+                        unigram_counts[word] += 1
+                    else:
+                        unigram_counts[word] = 1
+                    if index==0:
+                        try:
+                            bigram_counts['<s>'+'/'+word]+=1
+                        except KeyError:
+                            bigram_counts['<s>'+'/'+word]=1
+                    elif index==len(transcription)-1:
+                        try:
+                            bigram_counts[transcription[index-1]+'/'+word] += 1
+                        except KeyError:
+                            bigram_counts[transcription[index-1]+'/'+word] = 1
+                        try:
+                            bigram_counts[word+'/'+'<end>'] += 1
+                        except KeyError:
+                            bigram_counts[word+'/'+'<end>'] = 1
+                    else:
+                        try:
+                            bigram_counts[transcription[index-1]+'/'+word] += 1
+                        except KeyError:
+                            bigram_counts[transcription[index-1]+'/'+word] = 1
+        else:
+            counter = 0
+            for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
+                if counter == n:
+                    break
+                unigram_counts['<s>']+=1
+                transcription = self.read_transcription(wav_file).split()
+                for index,word in enumerate(transcription):
+                    if word in unigram_counts:
+                        unigram_counts[word] += 1
+                    else:
+                        unigram_counts[word] = 1
+                    if index==0:
+                        try:
+                            bigram_counts['<s>'+'/'+word]+=1
+                        except KeyError:
+                            bigram_counts['<s>'+'/'+word]=1
+                    elif index==len(transcription)-1:
+                        try:
+                            bigram_counts[transcription[index-1]+'/'+word] += 1
+                        except KeyError:
+                            bigram_counts[transcription[index-1]+'/'+word] = 1
+                        try:
+                            bigram_counts[word+'/'+'<end>'] += 1
+                        except KeyError:
+                            bigram_counts[word+'/'+'<end>'] = 1
+                    else:
+                        try:
+                            bigram_counts[transcription[index-1]+'/'+word] += 1
+                        except KeyError:
+                            bigram_counts[transcription[index-1]+'/'+word] = 1
+                    counter += 1
+            
+        # Create bigram probabilities from accumulated counts, discounting uniformly 0.1 for silence (the value can be changed)
+        self.bigram_probability = {k:(v/unigram_counts[k.split('/')[0]])-(sil_probability/len(unigram_counts)) for k,v in bigram_counts.items()}
+            
+        return self.bigram_probability
+    
+    def generate_multiple_words_wfst_bigrams(self,word_list, weight_dictionary, bigram_dict):
+        """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs.
+        This will currently output word labels.  
+        Exercise: could you modify this function and the one above to output a single phone label instead?
+    
+        Args:
+        word (str): the word to generate
+        
+        Returns:
+        the constructed WFST
+    
+        """
+        if isinstance(word_list, str):
+            word_list = word_list.split()
+        f = fst.Fst("log")
+        start_state = f.add_state()
+        f.set_start(start_state)
+        second_starts = {}
+        ends = {}
+        for word in word_list:
+            if word!= 'sil':
+                # create the start state
+        
+                current_state = f.add_state()
+        
+                f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(bigram_dict['<s>'+'/'+word])), current_state))
+        
+                counter = 1
+    
+                # iterate over all the phones in the word
+                for phone in self.lex[word]:   # will raise an exception if word is not in the lexicon
+        
+                    current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary)
+            
+                    counter += 1
+    
+                    # note: new current_state is now set to the final state of the previous phone WFST
+        
+                f.set_final(current_state)
+        
+                second_start_state = current_state
+                second_starts[word] = second_start_state
+        
+                for word2 in word_list:
+                
+                    if word2 != 'sil':
+            
+                        current_state = f.add_state()
+        
+                        f.add_arc(second_start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(bigram_dict[word+'/'+word2])), current_state))
+        
+                        counter = 1
+    
+                        # iterate over all the phones in the word
+                        for phone in self.lex[word2]:   # will raise an exception if word is not in the lexicon
+        
+                            current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word2]),word2, weight_dictionary)
+            
+                            counter += 1
+    
+                        # note: new current_state is now set to the final state of the previous phone WFST
+            
+                        if word2 not in ends:
+                            ends[word2] = [current_state]
+                        else:
+                            ends[word2] += [current_state]
+                
+                    else:
+                    
+                        current_state = f.add_state()
+                    
+                        f.add_arc(second_start_state, fst.Arc(0,0,fst.Weight("log",-math.log(0.1)),current_state))
+            
+                        current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word2, weight_dictionary)
+            
+                        f.add_arc(current_state, fst.Arc(0,0,fst.Weight("log",-math.log(1)),second_start_state))
+                    
+                    
+        
+            else:
+                current_state = f.add_state()
+            
+                f.add_arc(start_state, fst.Arc(0,0,fst.Weight("log",-math.log(0.1)),current_state))
+            
+                current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary)
+            
+                f.add_arc(current_state, fst.Arc(0,0,fst.Weight("log",-math.log(1)),start_state))
+            
+        for key in ends:
+            for end in ends[key]:
+                f.add_arc(end, fst.Arc(0, 0, fst.Weight("log",0), second_starts[key]))
+    
+        return f
+    
+    def create_wfst_bigrams(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}):
+        f = self.generate_multiple_words_wfst_bigrams([k for k in self.lex.keys()], weight_dictionary, self.bigram_probability)
+        f.set_input_symbols(self.state_table)
+        f.set_output_symbols(self.word_table)
+        if tree_struc:
+            f = fst.determinize(f)
+        if weight_push:
+            f = f.push()
+        return f
+
+    def create_wfst_bigrams_try(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}):
+        f = self.generate_multiple_words_wfst_bigrams(['a','of','sil'], weight_dictionary, self.bigram_probability)
+        f.set_input_symbols(self.state_table)
+        f.set_output_symbols(self.word_table)
+        if tree_struc:
+            f = fst.determinize(f)
+        if weight_push:
+            f = f.push()
+        return f
+    
+    
 
 class MyViterbiDecoder:
     
