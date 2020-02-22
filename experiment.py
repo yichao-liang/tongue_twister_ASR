@@ -1,4 +1,4 @@
-# from provided solution
+__author__ = "s1735938, s1960659"
 import observation_model
 import math
 import numpy as np
@@ -27,7 +27,7 @@ def run_exp(wfst,num_test,beam_width=1e10):
     Run a test on the test data, record the WER, speed and memory cost.
     param wfst (pywrapfst._MutableFst)
     param num_test (int) The number of tests for the experiment. num_test=0 means using the dummy test.
-    param prob_beam_width (float) The pruning beam width in negative log probability.
+    param prob_beam_width (float) The pruning beam width in negative log probability. By default corresponds to negative log 0.
     '''
     f = wfst
     
@@ -116,18 +116,22 @@ def count_states_arcs (f):
 
 class MyWFST:
     
-    def __init__(self):
-        self.parse_lexicon('lexicon.txt')
+    def __init__(self,lexicon='lexicon.txt'):
+        self.parse_lexicon(lexicon)
         self.generate_symbol_tables()
         
-    def create_wfst_word_output(self, lm=None, tree_structured=False, look_ahead=False):
+    def create_wfst_word_output(self, lm=None, tree_struc=False, weight_push=False):
         '''
         wfst with word output
         '''
         f = self.generate_multiple_words_wfst_word_output([k for k in self.lex.keys()])
         f.set_input_symbols(self.state_table)
         f.set_output_symbols(self.word_table)
-        print('done')
+        
+        if tree_struc:
+            f = fst.determinize(f)
+        if weight_push:
+            f = f.push()
         return f
 
     def create_wfst(self):
@@ -505,6 +509,8 @@ class MyViterbiDecoder:
                 for arc in self.f.arcs(i):
                     
                     if arc.ilabel != 0: # <eps> transitions don't emit and observation
+                        
+                        self.forward_counter += 1 # increase the forward counter by 1
                         j = arc.nextstate
                         tp = float(arc.weight)  # transition prob
                         ep = -self.om.log_observation_probability(self.f.input_symbols().find(arc.ilabel), t)  # emission negative log prob
