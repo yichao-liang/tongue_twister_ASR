@@ -122,7 +122,7 @@ class MyWFST:
         self.parse_lexicon(lexicon)
         self.generate_symbol_tables()
         
-    def create_wfst_word_output(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1, 'next':0.9}, lm=None):
+    def create_wfst_word_output(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1, 'next':0.9}):
         '''
         wfst with word output
         '''
