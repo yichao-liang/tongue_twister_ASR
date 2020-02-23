@@ -22,7 +22,7 @@ def read_transcription(wav_file):
     
     return transcription
 
-def run_exp(wfst,num_test,beam_width=1e10):
+def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
     '''
     Run a test on the test data, record the WER, speed and memory cost.
     param wfst (pywrapfst._MutableFst)
@@ -53,7 +53,6 @@ def run_exp(wfst,num_test,beam_width=1e10):
         for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav')[:num_test]:
             # update progress bar
             progressbar.update(1)
-            print(wav_file)
             
             if dummy_test:
                 wav_file = ''
@@ -70,9 +69,11 @@ def run_exp(wfst,num_test,beam_width=1e10):
 
             # save the forward computation counter
             computation_counter += decoder.forward_counter
-
-            print("recognized words: ",words)
-            print("correct words: ", transcription)
+            
+            if verbose:
+                print(wav_file)
+                print("recognized words: ",words)
+                print("correct words: ", transcription)
             error_counts = wer.compute_alignment_errors(transcription, words)
             word_count = len(transcription.split())
 
@@ -90,8 +91,8 @@ def run_exp(wfst,num_test,beam_width=1e10):
     Run time: {}, 
     Number of forward computations: {},
     Number of states and arcs: {} {},
-    Number of errors {} in {} words
-    """.format(time_cost,computation_counter,num_states,num_arcs,tot_errors,tot_words))     # you'll need to accumulate these to produce an overall Word Error Rate
+    Number of errors {} ({}) in {} words .
+    """.format(time_cost,computation_counter,num_states,num_arcs,tot_errors,error_counts,tot_words))     # you'll need to accumulate these to produce an overall Word Error Rate
     return time_cost,computation_counter,num_states,num_arcs,tot_errors,tot_words
         
         
@@ -489,8 +490,11 @@ class MyViterbiDecoder:
                         # and save the output labels encountered - this is a list, because
                         # there could be multiple output labels (in the case of <eps> arcs)
                         if arc.olabel != 0:
-                             self.W[t][j] = self.W[t][i] + [arc.olabel]
+                            # not executed so far
+                            self.W[t][j] = self.W[t][i] + [arc.olabel]
                         else:
+#                             print("traverse epsilon j:", self.W[t][j])
+#                             print("traverse epsilon i:", self.W[t][i])
                              self.W[t][j] = self.W[t][i]
                         
                         if j not in states_to_traverse:
@@ -532,6 +536,7 @@ class MyViterbiDecoder:
                             if arc.olabel !=0:
                                 self.W[t][j] = [arc.olabel]
                             else:
+                                # not executed so far
                                 self.W[t][j] = []
                             
     
