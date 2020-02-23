@@ -319,7 +319,7 @@ class MyWFST:
                     next_state = f.add_state()
                     if i==4:
                         # State 4 has 4 possible transitions: self-loop, state 1, state 2 and state 5. They need to sum up to 1 (self-loop=0.1, other transitions: uniformly distributed --> (1-0.1)/3 = 0.3
-                        f.add_arc(current_state, fst.Arc(in_label, 0, fst.Weight("log",-math.log(0.3)), next_state))
+                        f.add_arc(current_state, fst.Arc(ergodic_states[current_state], 0, fst.Weight("log",-math.log(0.3)), next_state))
                     current_state = next_state
                 # state 1 and 5 behaves as normal left to right wfst
                 else:
