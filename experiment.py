@@ -127,7 +127,6 @@ class MyWFST:
         wfst with word output
         '''
         
-        
         if lm == 'unigram':
             f = create_wfst_unigram()
         elif lm == 'bigram':
