@@ -309,8 +309,8 @@ class MyWFST:
         else:
             # following code creates the wfst for silence model, a five state model having states 2,3,4 ergodically connected
             ergodic_states = {} # stores information for the ergodic states
-            self_weight = fst.Weight("log",-math.log(0.1)) # Self-loop probability
-            next_weight = fst.Weight("log",-math.log(0.9)) # Next state transition probability
+            
+            
             current_state = start_state
             for i in range(1,6):
                 # fill ergodic_states dictionary
@@ -319,26 +319,54 @@ class MyWFST:
                     next_state = f.add_state()
                     if i==4:
                         # State 4 has 4 possible transitions: self-loop, state 1, state 2 and state 5. They need to sum up to 1 (self-loop=0.1, other transitions: uniformly distributed --> (1-0.1)/3 = 0.3
-                        f.add_arc(current_state, fst.Arc(ergodic_states[current_state], 0, fst.Weight("log",-math.log(0.3)), next_state))
+                        try:
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                        except KeyError:
+                            next_weight = fst.Weight('log', -math.log(0.3))
+                        except ValueError:
+                            next_weight =  fst.Weight('log', -math.log(0.01))
+                        f.add_arc(current_state, fst.Arc(ergodic_states[current_state], 0, next_weight, next_state))
                     current_state = next_state
                 # state 1 and 5 behaves as normal left to right wfst
                 else:
                     in_label = self.state_table.find('{}_{}'.format('sil',i))
+                    try:
+                        self_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+                    except KeyError:
+                        self_weight = fst.Weight("log",-math.log(0.1)) # Self-loop probability
+                    except ValueError:
+                            next_weight =  fst.Weight('log', -math.log(0.01))
                     f.add_arc(current_state, fst.Arc(in_label,0,self_weight,current_state))
                     next_state = f.add_state()
+                    try:
+                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                    except KeyError:
+                        next_weight = fst.Weight("log",-math.log(0.9)) # Next state transition probability
                     f.add_arc(current_state, fst.Arc(in_label, 0, next_weight, next_state))
                     current_state = next_state
             # add ergodic connections for states 2,3,4
             for key in ergodic_states.keys():
                 for key2 in ergodic_states.keys():
                     if key==key2:
+                        try:
+                            self_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key)]))
+                        except KeyError:
+                            self_weight = fst.Weight("log",-math.log(0.1)) # Self-loop probability
                         f.add_arc(key, fst.Arc(ergodic_states[key],0,self_weight,key))
                     elif ergodic_states[key]==self.state_table.find('sil_4'):
                         # See above at i==4 condition
-                        f.add_arc(key, fst.Arc(ergodic_states[key],0,fst.Weight("log",-math.log(0.3)),key2))
+                        try:
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key2)]))
+                            f.add_arc(key, fst.Arc(ergodic_states[key],0,next_weight,key2))
+                        except KeyError:
+                            f.add_arc(key, fst.Arc(ergodic_states[key],0,fst.Weight("log",-math.log(0.3)),key2))
                     else:
                         # All transitions need to sum up to 1, self-loop = 0.1, ergodic transitions: uniformly distributed--> (1-0.1)/2=0.45
-                        f.add_arc(key, fst.Arc(ergodic_states[key],0,fst.Weight("log",-math.log(0.45)),key2))
+                        try:
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key2)]))
+                        except KeyError:
+                            next_weight = fst.Weight("log",-math.log(0.45))
+                        f.add_arc(key, fst.Arc(ergodic_states[key],0,next_weight,key2))
             
         return current_state
 
