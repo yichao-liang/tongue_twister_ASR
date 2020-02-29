@@ -309,8 +309,8 @@ class MyWFST:
         else:
             # following code creates the wfst for silence model, a five state model having states 2,3,4 ergodically connected
             ergodic_states = {} # stores information for the ergodic states
-            self_weight = fst.Weight("log",-math.log(0.1)) # Self-loop probability
-            next_weight = fst.Weight("log",-math.log(0.9)) # Next state transition probability
+            
+            
             current_state = start_state
             for i in range(1,6):
                 # fill ergodic_states dictionary
@@ -319,26 +319,54 @@ class MyWFST:
                     next_state = f.add_state()
                     if i==4:
                         # State 4 has 4 possible transitions: self-loop, state 1, state 2 and state 5. They need to sum up to 1 (self-loop=0.1, other transitions: uniformly distributed --> (1-0.1)/3 = 0.3
-                        f.add_arc(current_state, fst.Arc(ergodic_states[current_state], 0, fst.Weight("log",-math.log(0.3)), next_state))
+                        try:
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                        except KeyError:
+                            next_weight = fst.Weight('log', -math.log(0.3))
+                        except ValueError:
+                            next_weight =  fst.Weight('log', -math.log(0.01))
+                        f.add_arc(current_state, fst.Arc(ergodic_states[current_state], 0, next_weight, next_state))
                     current_state = next_state
                 # state 1 and 5 behaves as normal left to right wfst
                 else:
                     in_label = self.state_table.find('{}_{}'.format('sil',i))
+                    try:
+                        self_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+                    except KeyError:
+                        self_weight = fst.Weight("log",-math.log(0.1)) # Self-loop probability
+                    except ValueError:
+                            next_weight =  fst.Weight('log', -math.log(0.01))
                     f.add_arc(current_state, fst.Arc(in_label,0,self_weight,current_state))
                     next_state = f.add_state()
+                    try:
+                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                    except KeyError:
+                        next_weight = fst.Weight("log",-math.log(0.9)) # Next state transition probability
                     f.add_arc(current_state, fst.Arc(in_label, 0, next_weight, next_state))
                     current_state = next_state
             # add ergodic connections for states 2,3,4
             for key in ergodic_states.keys():
                 for key2 in ergodic_states.keys():
                     if key==key2:
+                        try:
+                            self_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key)]))
+                        except KeyError:
+                            self_weight = fst.Weight("log",-math.log(0.1)) # Self-loop probability
                         f.add_arc(key, fst.Arc(ergodic_states[key],0,self_weight,key))
                     elif ergodic_states[key]==self.state_table.find('sil_4'):
                         # See above at i==4 condition
-                        f.add_arc(key, fst.Arc(ergodic_states[key],0,fst.Weight("log",-math.log(0.3)),key2))
+                        try:
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key2)]))
+                            f.add_arc(key, fst.Arc(ergodic_states[key],0,next_weight,key2))
+                        except KeyError:
+                            f.add_arc(key, fst.Arc(ergodic_states[key],0,fst.Weight("log",-math.log(0.3)),key2))
                     else:
                         # All transitions need to sum up to 1, self-loop = 0.1, ergodic transitions: uniformly distributed--> (1-0.1)/2=0.45
-                        f.add_arc(key, fst.Arc(ergodic_states[key],0,fst.Weight("log",-math.log(0.45)),key2))
+                        try:
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key2)]))
+                        except KeyError:
+                            next_weight = fst.Weight("log",-math.log(0.45))
+                        f.add_arc(key, fst.Arc(ergodic_states[key],0,next_weight,key2))
             
         return current_state
 
@@ -837,3 +865,252 @@ class MyViterbiDecoder:
         best_out_sequence = ' '.join([ self.f.output_symbols().find(label) for label in best_out_sequence])
 
         return (best_state_sequence, best_out_sequence)
+
+class Baum_Welch:
+    
+    NLL_ZERO = 1e10  # define a constant representing -log(0).  This is really infinite, but approximate
+                     # it here with a very large number
+    
+    
+    
+    def __init__(self, f, audio_file_name):
+        """Set up the decoder class with an audio file and WFST f
+        """
+        self.om = observation_model.ObservationModel()
+        self.f = f
+        
+        
+        if audio_file_name:
+            self.om.load_audio(audio_file_name)
+        else:
+            self.om.load_dummy_audio()
+        
+        self.initialise_decoding()
+    
+    def initialise_decoding(self):
+        """set up the values for V_j(0) (as negative log-likelihoods)
+        
+        """
+        
+        self.A = []
+        for t in range(self.om.observation_length()+1):
+            self.A.append([self.NLL_ZERO]*self.f.num_states())
+        
+        self.B = []
+        for t in range(self.om.observation_length()+1):
+            self.B.append([self.NLL_ZERO]*self.f.num_states())
+        
+        # The above code means that self.V[t][j] for t = 0, ... T gives the Viterbi cost
+        # of state j, time t (in negative log-likelihood form)
+        # Initialising the costs to NLL_ZERO effectively means zero probability    
+        
+        # give the WFST start state a probability of 1.0   (NLL = 0.0)
+        self.A[0][self.f.start()] = 0.0
+        
+        # some WFSTs might have arcs with epsilon on the input (you might have already created 
+        # examples of these in earlier labs) these correspond to non-emitting states, 
+        # which means that we need to process them without stepping forward in time.  
+        # Don't worry too much about this!  
+        self.traverse_epsilon_arcs(0)
+        
+    def traverse_epsilon_arcs(self, t):
+        """Traverse arcs with <eps> on the input at time t
+        
+        These correspond to transitions that don't emit an observation
+        
+        We've implemented this function for you as it's slightly trickier than
+        the normal case.  You might like to look at it to see what's going on, but
+        don't worry if you can't fully follow it.
+        
+        """
+        
+        states_to_traverse = list(range(self.f.num_states())) # traverse all states
+        
+        
+        
+        while states_to_traverse:
+            
+            # Set i to the ID of the current state, the first 
+            # item in the list (and remove it from the list)
+            i = states_to_traverse.pop(0)   
+        
+            # don't bother traversing states which have zero probability
+            if self.A[t][i] == self.NLL_ZERO:
+                   continue
+        
+            for arc in self.f.arcs(i):
+                
+                if arc.ilabel == 0:     # if <eps> transition
+                  
+                    j = arc.nextstate   # ID of next state
+                    
+                    if self.A[t][j] != self.NLL_ZERO:
+                
+                        self.A[t][j] = -math.log(math.exp(-self.A[t][j])+math.exp(-(self.A[t][i]+float(arc.weight))))
+                    
+                    else:
+                        
+                        self.A[t][j] = self.A[t][i]+float(arc.weight)
+                   
+                    if j not in states_to_traverse:
+                            states_to_traverse.append(j)
+
+    
+    def forward_step(self, t):
+        
+        
+        states_to_traverse = list(range(self.f.num_states())) # traverse all states
+        while states_to_traverse:
+            
+            # Set i to the ID of the current state, the first 
+            # item in the list (and remove it from the list)
+            i = states_to_traverse.pop(0)
+            
+            if self.A[t-1][i] == self.NLL_ZERO:
+                   continue
+
+            for arc in self.f.arcs(i):
+                if arc.ilabel != 0:
+                    
+                        j = arc.nextstate   # ID of next state  
+                        
+                        
+                        # this means we've found a lower-cost path to
+                        # state j at time t.  We might need to add it
+                        # back to the processing queue.
+                        try:
+                            if self.A[t][j] != self.NLL_ZERO:
+                                self.A[t][j] = -math.log(math.exp(-self.A[t][j])+math.exp(-(self.A[t-1][i]+float(arc.weight)-self.om.log_observation_probability(
+                                self.f.input_symbols().find(arc.ilabel),t))))
+                        except ValueError:
+                            pass
+                        else:
+                            self.A[t][j] = self.A[t-1][i]+float(arc.weight)-self.om.log_observation_probability(
+                            self.f.input_symbols().find(arc.ilabel),t)
+                 
+                    
+                
+
+    
+    def finalise_decoding(self):
+        states_to_transverse = list(range(self.f.num_states()))
+        while states_to_transverse:
+            
+            i = states_to_transverse.pop(0)
+            for arc in self.f.arcs(i):
+                if arc.ilabel != 0 and arc.nextstate==self.f.num_states()-1:
+                    j = arc.nextstate   # ID of next state  
+                    
+                
+                    # this means we've found a lower-cost path to
+                    # state j at time t.  We might need to add it
+                    # back to the processing queue.
+                    try:
+                        self.P = -math.log(math.exp(-self.P)+math.exp(-(self.A[self.om.observation_length()][i]+
+                                                                      float(arc.weight))))
+                    except:
+                        self.P = self.A[self.om.observation_length()][i]+float(arc.weight)
+                    self.B[self.om.observation_length()][i] = float(arc.weight)
+        
+                
+    def forward(self):
+        
+        self.initialise_decoding()
+        t = 1
+        while t <= self.om.observation_length():
+            self.forward_step(t)
+            t+=1
+        self.finalise_decoding()
+        t = self.om.observation_length()-1
+        while t>=0:
+            self.back_pass(t)
+            t-=1
+   
+            
+    
+    def back_pass(self,t):
+        states_to_traverse = list(range(self.f.num_states())) # traverse all states
+        while states_to_traverse:
+            
+            # Set i to the ID of the current state, the first 
+            # item in the list (and remove it from the list)
+            i = states_to_traverse.pop(0)
+
+            for arc in self.f.arcs(i):
+                if arc.ilabel != 0:
+                    
+                    j = arc.nextstate   # ID of next state  
+                    
+                    if self.B[t+1][j]==self.NLL_ZERO:
+                        continue
+                    
+                    # this means we've found a lower-cost path to
+                    # state j at time t.  We might need to add it
+                    # back to the processing queue.
+                    try:
+                        if self.B[t][i]!=self.NLL_ZERO:
+                            self.B[t][i] = -math.log(math.exp(-self.B[t][i])+math.exp(-(self.B[t+1][j]+float(arc.weight)-self.om.log_observation_probability(
+                            self.f.input_symbols().find(arc.ilabel),t+1))))
+                    except ValueError:
+                        pass
+                    else:
+                        self.B[t][i] = self.B[t+1][j]+float(arc.weight)-self.om.log_observation_probability(
+                        self.f.input_symbols().find(arc.ilabel),t+1)
+    
+    
+
+    def forward_backward(self,weight_dictionary={}):
+        states_to_traverse = list(range(self.f.num_states())) # traverse all states
+        while states_to_traverse:
+                
+            i = states_to_traverse.pop(0)
+                
+            for arc in self.f.arcs(i):
+                    
+                if arc.ilabel != 0:
+                    
+                    j = arc.nextstate
+                    arc_occupation = sum([(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
+                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][j]-self.P) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][j]!=0])
+                        
+                        
+                    total_arc = sum([(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
+                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][arc.nextstate]-self.P) for arc in self.f.arcs(i) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][j]!=0])
+                        
+                    if str(i)+str(j) not in weight_dictionary:
+                            weight_dictionary[str(i)+str(j)]=[arc_occupation,total_arc]
+                    else:
+                            weight_dictionary[str(i)+str(j)]=[weight_dictionary[str(i)+str(j)][0]+arc_occupation,
+                                                                  weight_dictionary[str(i)+str(j)][1]+total_arc]
+
+                        
+            
+        return weight_dictionary
+    
+    
+def train_Baum_Welch(f, n, save=False, filename = 'weight_dictionary.txt'):
+    
+    for i in range(n):
+        weight_dictionary = {}
+        print(f'Round {str(i+1)} of Baum-Welch...')
+        with tqdm(total=len(glob.glob('/group/teaching/asr/labs/recordings/*.wav'))) as progressbar:
+            for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
+                progressbar.update(1)
+                re_est = Baum_Welch(f, wav_file)
+                re_est.forward()
+                weight_dictionary = re_est.forward_backward(weight_dictionary)
+            weight_dictionary = {k:v[0]/v[1] for k,v in weight_dictionary.items()}
+            obj = MyWFST()
+            f = obj.create_wfst_word_output(weight_dictionary = weight_dictionary)
+    if save:
+        with open(filename, 'w') as f:
+            for key, value in weight_dictionary.items():
+                f.write(str(key)+' '+str(value)+'\n')
+    return weight_dictionary
+
+def load_weight_dictionary(filename = 'weight_dictionary.txt'):
+    weight_dictionary = {}
+    with open(filename) as f:
+        for line in f:
+            weight_dictionary[line.split()[0]] = float((line.split()[1]).rstrip())
+    return weight_dictionary
