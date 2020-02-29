@@ -288,6 +288,8 @@ class MyWFST:
                         sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
                     except KeyError:
                         sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
+                    except ValueError:
+                            next_weight =  fst.Weight('log', -math.log(0.01))
                         # self-loop back to current state
                     f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
         
@@ -303,6 +305,8 @@ class MyWFST:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
                     except KeyError:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
+                    except ValueError:
+                            next_weight =  fst.Weight('log', -math.log(0.01))
                     f.add_arc(current_state, fst.Arc(in_label, out_label, next_weight, next_state))
                 
                 current_state = next_state
@@ -342,6 +346,8 @@ class MyWFST:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
                     except KeyError:
                         next_weight = fst.Weight("log",-math.log(0.9)) # Next state transition probability
+                    except ValueError:
+                            next_weight =  fst.Weight('log', -math.log(0.01))
                     f.add_arc(current_state, fst.Arc(in_label, 0, next_weight, next_state))
                     current_state = next_state
             # add ergodic connections for states 2,3,4
@@ -352,6 +358,8 @@ class MyWFST:
                             self_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key)]))
                         except KeyError:
                             self_weight = fst.Weight("log",-math.log(0.1)) # Self-loop probability
+                        except ValueError:
+                            next_weight =  fst.Weight('log', -math.log(0.01))
                         f.add_arc(key, fst.Arc(ergodic_states[key],0,self_weight,key))
                     elif ergodic_states[key]==self.state_table.find('sil_4'):
                         # See above at i==4 condition
@@ -360,12 +368,16 @@ class MyWFST:
                             f.add_arc(key, fst.Arc(ergodic_states[key],0,next_weight,key2))
                         except KeyError:
                             f.add_arc(key, fst.Arc(ergodic_states[key],0,fst.Weight("log",-math.log(0.3)),key2))
+                        except ValueError:
+                            next_weight =  fst.Weight('log', -math.log(0.01))
                     else:
                         # All transitions need to sum up to 1, self-loop = 0.1, ergodic transitions: uniformly distributed--> (1-0.1)/2=0.45
                         try:
                             next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key2)]))
                         except KeyError:
                             next_weight = fst.Weight("log",-math.log(0.45))
+                        except ValueError:
+                            next_weight =  fst.Weight('log', -math.log(0.01))
                         f.add_arc(key, fst.Arc(ergodic_states[key],0,next_weight,key2))
             
         return current_state
@@ -470,7 +482,7 @@ class MyWFST:
         return f
     
     
-    def create_wfst_unigram(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability):
+    def create_wfst_unigram(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=0.9):
         self.create_unigram_probabilities()
         f = self.generate_multiple_words_wfst_unigram([k for k in self.lex.keys()], self.unigram_probability, weight_dictionary, fin_probability)
 #         f.set_input_symbols(self.state_table)
@@ -645,7 +657,7 @@ class MyWFST:
     
         return f
     
-    def create_wfst_bigrams(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability):
+    def create_wfst_bigrams(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=0.9):
         self.create_unigram_probabilities()
         f = self.generate_multiple_words_wfst_bigrams([k for k in self.lex.keys()], weight_dictionary, self.bigram_probability, fin_probability)
 #         f.set_input_symbols(self.state_table)
@@ -656,7 +668,7 @@ class MyWFST:
             f = f.push()
         return f
 
-    def create_wfst_bigrams_try(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability):
+    def create_wfst_bigrams_try(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=0.9):
         f = self.generate_multiple_words_wfst_bigrams(['a','of','sil'], weight_dictionary, self.bigram_probability, fin_probability)
         f.set_input_symbols(self.state_table)
         f.set_output_symbols(self.word_table)
@@ -1071,11 +1083,11 @@ class Baum_Welch:
                     
                     j = arc.nextstate
                     arc_occupation = sum([(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
-                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][j]-self.P) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][j]!=0])
+                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][j])/self.P for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][j]!=0])
                         
                         
                     total_arc = sum([(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
-                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][arc.nextstate]-self.P) for arc in self.f.arcs(i) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][j]!=0])
+                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][arc.nextstate])/self.P for arc in self.f.arcs(i) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][j]!=0])
                         
                     if str(i)+str(j) not in weight_dictionary:
                             weight_dictionary[str(i)+str(j)]=[arc_occupation,total_arc]
@@ -1088,7 +1100,7 @@ class Baum_Welch:
         return weight_dictionary
     
     
-def train_Baum_Welch(f, n, save=False, filename = 'weight_dictionary.txt'):
+def train_Baum_Welch(f, n, save=False, filename = 'weight_dictionary.txt',lexicon='lexicon.txt'):
     
     for i in range(n):
         weight_dictionary = {}
@@ -1100,7 +1112,7 @@ def train_Baum_Welch(f, n, save=False, filename = 'weight_dictionary.txt'):
                 re_est.forward()
                 weight_dictionary = re_est.forward_backward(weight_dictionary)
             weight_dictionary = {k:v[0]/v[1] for k,v in weight_dictionary.items()}
-            obj = MyWFST()
+            obj = MyWFST(lexicon)
             f = obj.create_wfst_word_output(weight_dictionary = weight_dictionary)
     if save:
         with open(filename, 'w') as f:
