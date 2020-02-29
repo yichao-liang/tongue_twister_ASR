@@ -128,9 +128,9 @@ class MyWFST:
         '''
         
         if lm == 'unigram':
-            f = create_wfst_unigram(fin_probability=fin_probability)
+            f = self.create_wfst_unigram(fin_probability=fin_probability)
         elif lm == 'bigram':
-            f = create_wfst_bigrams(fin_probability=fin_probability)
+            f = self.create_wfst_bigrams(fin_probability=fin_probability)
         else:
             f = self.generate_multiple_words_wfst_word_output([k for k in self.lex.keys()], weight_dictionary, fin_probability)
         
@@ -442,7 +442,7 @@ class MyWFST:
         return f
     
     
-    def create_wfst_unigram(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability):
+    def create_wfst_unigram(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=0.9):
         self.create_unigram_probabilities()
         f = self.generate_multiple_words_wfst_unigram([k for k in self.lex.keys()], self.unigram_probability, weight_dictionary, fin_probability)
 #         f.set_input_symbols(self.state_table)
@@ -523,7 +523,7 @@ class MyWFST:
             
         return self.bigram_probability
     
-    def generate_multiple_words_wfst_bigrams(self,word_list, weight_dictionary, bigram_dict, fin_probability):
+    def generate_multiple_words_wfst_bigrams(self,word_list, weight_dictionary, bigram_dict, fin_probability=0.9):
         """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs.
         This will currently output word labels.  
         Exercise: could you modify this function and the one above to output a single phone label instead?
@@ -617,8 +617,8 @@ class MyWFST:
     
         return f
     
-    def create_wfst_bigrams(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability):
-        self.create_unigram_probabilities()
+    def create_wfst_bigrams(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=0.9):
+        self.create_bigram_probabilities()
         f = self.generate_multiple_words_wfst_bigrams([k for k in self.lex.keys()], weight_dictionary, self.bigram_probability, fin_probability)
 #         f.set_input_symbols(self.state_table)
 #         f.set_output_symbols(self.word_table)
@@ -628,7 +628,7 @@ class MyWFST:
             f = f.push()
         return f
 
-    def create_wfst_bigrams_try(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability):
+    def create_wfst_bigrams_try(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=0.9):
         f = self.generate_multiple_words_wfst_bigrams(['a','of','sil'], weight_dictionary, self.bigram_probability, fin_probability)
         f.set_input_symbols(self.state_table)
         f.set_output_symbols(self.word_table)
