@@ -1005,24 +1005,14 @@ class Baum_Welch:
 
     
     def finalise_decoding(self):
-        states_to_transverse = list(range(self.f.num_states()))
-        while states_to_transverse:
-            
-            i = states_to_transverse.pop(0)
-            for arc in self.f.arcs(i):
-                if arc.ilabel != 0 and arc.nextstate==self.f.num_states()-1:
-                    j = arc.nextstate   # ID of next state  
-                    
-                
-                    # this means we've found a lower-cost path to
-                    # state j at time t.  We might need to add it
-                    # back to the processing queue.
-                    try:
-                        self.P = -math.log(math.exp(-self.P)+math.exp(-(self.A[self.om.observation_length()][i]+
-                                                                      float(arc.weight))))
-                    except:
-                        self.P = self.A[self.om.observation_length()][i]+float(arc.weight)
-                    self.B[self.om.observation_length()][i] = float(arc.weight)
+        for state in self.f.states():
+            final_weight = float(self.f.final(state))
+            if self.A[-1][state] != self.NLL_ZERO:
+                if final_weight == math.inf:
+                    self.A[-1][state] = self.NLL_ZERO  # effectively says that we can't end in this state
+                else:
+                    self.A[-1][state] += final_weight
+                    self.B[-1][state] = final_weight
         
                 
     def forward(self):
@@ -1083,11 +1073,11 @@ class Baum_Welch:
                     
                     j = arc.nextstate
                     arc_occupation = sum([(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
-                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][j])-self.P for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO])
+                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][j]) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][j]!=self.NLL_ZERO])
                         
                         
                     total_arc = sum([(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
-                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][arc.nextstate])-self.P for arc in self.f.arcs(i) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO])
+                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][arc.nextstate]) for arc in self.f.arcs(i) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][arc.nextstate]!=self.NLL_ZERO])
                         
                     if str(i)+str(j) not in weight_dictionary:
                             weight_dictionary[str(i)+str(j)]=[arc_occupation,total_arc]
