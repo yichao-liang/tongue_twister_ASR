@@ -1083,11 +1083,11 @@ class Baum_Welch:
                     
                     j = arc.nextstate
                     arc_occupation = sum([(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
-                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][j])/self.P for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][j]!=0])
+                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][j])-self.P for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO])
                         
                         
                     total_arc = sum([(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
-                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][arc.nextstate])/self.P for arc in self.f.arcs(i) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][j]!=0])
+                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][arc.nextstate])-self.P for arc in self.f.arcs(i) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO])
                         
                     if str(i)+str(j) not in weight_dictionary:
                             weight_dictionary[str(i)+str(j)]=[arc_occupation,total_arc]
