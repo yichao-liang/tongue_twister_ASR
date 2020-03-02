@@ -34,7 +34,7 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
     
     # store the error counts and word counts
     tot_errors,tot_words,computation_counter = 0,0,0
-    
+    tot_wer_split = np.array([0,0,0])
     num_audio = len(glob.glob('/group/teaching/asr/labs/recordings/*.wav'))
     
     # take all if num_test is None
@@ -76,6 +76,7 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
                 print("recognized words: ",words)
                 print("correct words: ", transcription)
             error_counts = wer.compute_alignment_errors(transcription, words)
+            tot_wer_split += error_counts
             word_count = len(transcription.split())
 
             # increase the total error and word count
@@ -93,7 +94,7 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
     Number of forward computations: {},
     Number of states and arcs: {} {},
     Number of errors {} ({}) in {} words {}.
-    """.format(time_cost,computation_counter,num_states,num_arcs,tot_errors,error_counts,tot_words,tot_errors/tot_words))     # you'll need to accumulate these to produce an overall Word Error Rate
+    """.format(time_cost,computation_counter,num_states,num_arcs,tot_errors,tot_wer_split,tot_words,tot_errors/tot_words))     # you'll need to accumulate these to produce an overall Word Error Rate
     return time_cost,computation_counter,num_states,num_arcs,tot_errors,tot_words
         
         
