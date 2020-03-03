@@ -161,7 +161,12 @@ class MyWFST:
         with open(lex_file, 'r') as f:
             for line in f:
                 line = line.split()  # split at each space
-                self.lex[line[0]] = line[1:]  # first field the word, the rest is the phones
+                if line[0] not in self.lex:
+                    count[line[0]] = 0
+                    self.lex[line[0]] = line[1:]  # first field the word, the rest is the phones
+                else:
+                    count[line[0]] += 1
+                    self.lex[line[0]+'_'+str(count[line[0]])] = line[1:]
 
 
 
@@ -291,7 +296,7 @@ class MyWFST:
                     except ValueError:
                             s1_weight =  fst.Weight('log', -math.log(0.01))
                     f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
-                    out_label = self.word_table.find(word)
+                    out_label = self.word_table.find(word.split('_')[0])
                     next_state = f.add_state()
                     try:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
