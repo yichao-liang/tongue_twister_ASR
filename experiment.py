@@ -158,6 +158,7 @@ class MyWFST:
         """
     
         self.lex = {}  # create a dictionary for the lexicon entries (this could be a problem with larger lexica)
+        count = {}
         with open(lex_file, 'r') as f:
             for line in f:
                 line = line.split()  # split at each space
