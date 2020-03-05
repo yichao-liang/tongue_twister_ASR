@@ -372,7 +372,7 @@ class MyWFST:
             
             next_state = f.add_state()
             
-            f.add_arc(current_state, fst.Arc(self.state_table.find('sil_1'), 0, fst.Weight('log',-math.log(0.1)), next_state))
+            f.add_arc(current_state, fst.Arc(self.state_table.find('sil_1'), 0, fst.Weight('log',-math.log(start_probability)), next_state))
                     
             current_state = next_state
                     
