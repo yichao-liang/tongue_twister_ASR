@@ -160,10 +160,17 @@ class MyWFST:
         """
     
         self.lex = {}  # create a dictionary for the lexicon entries (this could be a problem with larger lexica)
+        count = {}
         with open(lex_file, 'r') as f:
             for line in f:
                 line = line.split()  # split at each space
-                self.lex[line[0]] = line[1:]  # first field the word, the rest is the phones
+                if line[0] not in self.lex:
+                    count[line[0]] = 0
+                    self.lex[line[0]] = line[1:]  # first field the word, the rest is the phones
+                else:
+                    
+                    count[line[0]] += 1
+                    self.lex[line[0]+'_'+str(count[line[0]])] = line[1:]
 
 
 
@@ -224,19 +231,19 @@ class MyWFST:
         f = fst.Fst("log")
         start_state = f.add_state()
         f.set_start(start_state)
+        start_probability = 1/len(word_list)
         for word in word_list:
             # create the start state
         
-            current_state = f.add_state()
-        
-            f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1/len(word_list))), current_state))
+            current_state = start_state
+
             if word != 'sil':
                 counter = 1
     
                 # iterate over all the phones in the word
                 for phone in self.lex[word]:   # will raise an exception if word is not in the lexicon
         
-                    current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word,   weight_dictionary, fin_probability)
+                    current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word,   weight_dictionary, fin_probability, start_probability)
             
                     counter += 1
     
@@ -253,7 +260,7 @@ class MyWFST:
             else:
                 # If word is silence: apply special silence topology defined in generate_phone_wfst_no_output()
                 # Arguments phone, n, word_len and weight_dictionary are obsolete in this case, they simply won't be used
-                current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary, fin_probability)
+                current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary, fin_probability, start_probability)
             
                 f.add_arc(current_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1)), start_state))
     
@@ -266,7 +273,7 @@ class MyWFST:
         return f
 
     
-    def generate_phone_wfst_no_output(self, f, start_state, phone, n, counter, word_len, word, weight_dictionary, fin_probability):
+    def generate_phone_wfst_no_output(self, f, start_state, phone, n, counter, word_len, word, weight_dictionary, fin_probability, start_probability):
         """
         Generate a WFST representating an n-state left-to-right phone HMM, but without outputting the phone at the final state
 
@@ -284,8 +291,22 @@ class MyWFST:
         
             current_state = start_state
             for i in range(1, n+1):
+                
                 if i == n and counter==word_len:
                     in_label = self.state_table.find('{}_{}'.format(phone, i))
+
+                    next_state = f.add_state()
+                    out_label = self.word_table.find(word.split('_')[0])
+                    try:
+                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                    except KeyError:
+                        next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
+                    except ValueError:
+                        next_weight =  fst.Weight('log', -math.log(0.01))
+                    f.add_arc(current_state, fst.Arc(in_label, 0, next_weight, next_state))
+                    
+                    current_state = next_state
+                    
                     try:
                         sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
                     except KeyError:
@@ -293,25 +314,23 @@ class MyWFST:
                     except ValueError:
                             s1_weight =  fst.Weight('log', -math.log(0.01))
                     f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
-                    out_label = self.word_table.find(word)
+                    
                     next_state = f.add_state()
+                    
                     try:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
                     except KeyError:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
                     except ValueError:
                         next_weight =  fst.Weight('log', -math.log(0.01))
-                    f.add_arc(current_state, fst.Arc(in_label, out_label, next_weight, next_state))
+                    
+                    f.add_arc(current_state, fst.Arc(0, out_label, next_weight, next_state))
+                    
+                    
+                    
                 else:
                     in_label = self.state_table.find('{}_{}'.format(phone, i))
-                    try:
-                        sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
-                    except KeyError:
-                        sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
-                    except ValueError:
-                        s1_weight =  fst.Weight('log', -math.log(0.01))
-                        # self-loop back to current state
-                    f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
+
         
                     # transition to next state
         
@@ -321,13 +340,29 @@ class MyWFST:
                     out_label = 0   # output empty <eps> label
             
                     next_state = f.add_state()
-                    try:
-                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
-                    except KeyError:
-                        next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
-                    except ValueError:
-                        next_weight =  fst.Weight('log', -math.log(0.01))
+                    if counter/i == 1:
+                        next_weight = fst.Weight('log', -math.log(start_probability))
+                    else:
+                        
+                        try:
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                        except KeyError:
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
+                        except ValueError:
+                            next_weight =  fst.Weight('log', -math.log(0.01))
+                    
                     f.add_arc(current_state, fst.Arc(in_label, out_label, next_weight, next_state))
+                    
+                    current_state = next_state
+                    
+                    try:
+                        sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+                    except KeyError:
+                        sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
+                    except ValueError:
+                        s1_weight =  fst.Weight('log', -math.log(0.01))
+                        # self-loop back to current state
+                    f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
                 
                 current_state = next_state
         else:
@@ -336,6 +371,24 @@ class MyWFST:
             
             
             current_state = start_state
+            
+            next_state = f.add_state()
+            
+            f.add_arc(current_state, fst.Arc(self.state_table.find('sil_1'), 0, fst.Weight('log',-math.log(start_probability)), next_state))
+                    
+            current_state = next_state
+                    
+            try:
+                sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+            except KeyError:
+                sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
+            except ValueError:
+                s1_weight =  fst.Weight('log', -math.log(0.01))
+                # self-loop back to current state
+            f.add_arc(current_state, fst.Arc(self.state_table.find('sil_1'), 0, sl_weight, current_state))
+            
+            
+            
             for i in range(1,6):
                 # fill ergodic_states dictionary
                 if 1<i<5:
@@ -349,18 +402,31 @@ class MyWFST:
                             next_weight = fst.Weight('log', -math.log(0.3))
                         except ValueError:
                             next_weight =  fst.Weight('log', -math.log(0.01))
-                        f.add_arc(current_state, fst.Arc(ergodic_states[current_state], 0, next_weight, next_state))
+                        f.add_arc(current_state, fst.Arc(ergodic_states[current_state]+1, 0, next_weight, next_state))
+                        
+                        current_state = next_state
+                        
+                        try:
+                            sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+                        except KeyError:
+                            sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
+                        except ValueError:
+                            s1_weight =  fst.Weight('log', -math.log(0.01))
+                            # self-loop back to current state
+                        f.add_arc(current_state, fst.Arc(self.state_table.find('sil_5'), 0, sl_weight, current_state))
+                    
+                        
                     current_state = next_state
+                    
+
+                    
+                    
+                    
+                    
                 # state 1 and 5 behaves as normal left to right wfst
-                else:
-                    in_label = self.state_table.find('{}_{}'.format('sil',i))
-                    try:
-                        self_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
-                    except KeyError:
-                        self_weight = fst.Weight("log",-math.log(0.1)) # Self-loop probability
-                    except ValueError:
-                        self_weight =  fst.Weight('log', -math.log(0.01))
-                    f.add_arc(current_state, fst.Arc(in_label,0,self_weight,current_state))
+                elif i ==1:
+                    in_label = self.state_table.find('{}_{}'.format('sil','2'))
+
                     next_state = f.add_state()
                     try:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
@@ -368,8 +434,39 @@ class MyWFST:
                         next_weight = fst.Weight("log",-math.log(0.9)) # Next state transition probability
                     except ValueError:
                         next_weight =  fst.Weight('log', -math.log(0.01))
+                    
                     f.add_arc(current_state, fst.Arc(in_label, 0, next_weight, next_state))
                     current_state = next_state
+                    
+                    
+                    try:
+                        sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+                    except KeyError:
+                        sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
+                    except ValueError:
+                        s1_weight =  fst.Weight('log', -math.log(0.01))
+                        # self-loop back to current state
+                    f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
+                else:
+                    
+                    in_label = self.state_table.find('{}_{}'.format('sil', i))
+
+                    next_state = f.add_state()
+                   
+                    try:
+                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                    except KeyError:
+                        next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
+                    except ValueError:
+                        next_weight =  fst.Weight('log', -math.log(0.01))
+                    f.add_arc(current_state, fst.Arc(0, 0, next_weight, next_state))
+                    
+                    current_state = next_state
+                    
+
+                    
+                    
+                    
             # add ergodic connections for states 2,3,4
             for key in ergodic_states.keys():
                 for key2 in ergodic_states.keys():
@@ -380,16 +477,16 @@ class MyWFST:
                             self_weight = fst.Weight("log",-math.log(0.1)) # Self-loop probability
                         except ValueError:
                             self_weight =  fst.Weight('log', -math.log(0.01))
-                        f.add_arc(key, fst.Arc(ergodic_states[key],0,self_weight,key))
+                        if ergodic_states[key]!=self.state_table.find('sil_2'):
+                            f.add_arc(key, fst.Arc(ergodic_states[key],0,self_weight,key))
                     elif ergodic_states[key]==self.state_table.find('sil_4'):
                         # See above at i==4 condition
                         try:
                             next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key2)]))
                             f.add_arc(key, fst.Arc(ergodic_states[key],0,next_weight,key2))
                         except KeyError:
-                            f.add_arc(key, fst.Arc(ergodic_states[key],0,fst.Weight("log",-math.log(0.3)),key2))
-                        except ValueError:
-                            next_weight =  fst.Weight('log', -math.log(0.01))
+                            f.add_arc(key, fst.Arc(ergodic_states[key2],0,fst.Weight("log",-math.log(0.3)),key2))
+                        
                     else:
                         # All transitions need to sum up to 1, self-loop = 0.1, ergodic transitions: uniformly distributed--> (1-0.1)/2=0.45
                         try:
@@ -398,7 +495,7 @@ class MyWFST:
                             next_weight = fst.Weight("log",-math.log(0.45))
                         except ValueError:
                             next_weight =  fst.Weight('log', -math.log(0.01))
-                        f.add_arc(key, fst.Arc(ergodic_states[key],0,next_weight,key2))
+                        f.add_arc(key, fst.Arc(ergodic_states[key2],0,next_weight,key2))
             
         return current_state
 
@@ -418,6 +515,7 @@ class MyWFST:
     def create_unigram_probabilities(self,n=None, sil_probability=0.1):
         unigram_counts = {}
         tot = 0
+        lex = [a.split('_')[0] for a in self.lex.keys()]
         if n==None:
             for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
                 for word in self.read_transcription(wav_file).split():
@@ -439,7 +537,8 @@ class MyWFST:
                         unigram_counts[word] = 1
                 counter += 1
         # Compute unigram probability for each word, discounting it uniformly by silence probability (0.1/len(unigram_counts))
-        self.unigram_probability = {k:((v/tot)-(sil_probability/len(unigram_counts))) for k,v in unigram_counts.items()}
+        self.unigram_probability = {k:((v/tot)-(sil_probability/len(unigram_counts)))/lex.count(k) for k,v in unigram_counts.items() if k in lex}
+         
         return self.unigram_probability
     
     def generate_multiple_words_wfst_unigram(self, word_list, unigram_probabilities, weight_dictionary, fin_probability):
@@ -462,15 +561,17 @@ class MyWFST:
         for word in word_list:
             # create the start state
             if word=='sil':
+                
+                start_probability = 0.1
             
-                current_state = f.add_state()
+                current_state = start_state
             
-                f.add_arc(start_state, fst.Arc(0,0, fst.Weight("log",-math.log(0.1)), current_state)) # Probability to have a silence might be changed
+#                 f.add_arc(start_state, fst.Arc(0,0, fst.Weight("log",-math.log(0.1)), current_state)) # Probability to have a silence might be changed
             
             
                 # If word is silence: apply special silence topology defined in generate_phone_wfst_no_output()
                 # Arguments phone, n, word_len and weight_dictionary are obsolete in this case, they simply won't be used
-                current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary, fin_probability)
+                current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary, fin_probability, start_probability)
             
                 f.add_arc(current_state, fst.Arc(0, 0, fst.Weight("log",-math.log(1)), start_state))
             
@@ -478,17 +579,19 @@ class MyWFST:
             
         
             else:
+                
+                start_probability = unigram_probabilities[word.split('_')[0]]
             
-                current_state = f.add_state()
+                current_state = start_state
         
-                f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(unigram_probabilities[word])), current_state))
+#                 f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(unigram_probabilities[word])), current_state))
         
                 counter = 1
     
                 # iterate over all the phones in the word
                 for phone in self.lex[word]:   # will raise an exception if word is not in the lexicon
             
-                    current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary, fin_probability)
+                    current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary, fin_probability, start_probability)
             
                     counter += 1
     
