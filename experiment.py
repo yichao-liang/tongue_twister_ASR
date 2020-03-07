@@ -9,6 +9,7 @@ import observation_model
 import openfst_python as fst
 from tqdm import tqdm_notebook as tqdm
 import time
+from scipy import special
 
 def read_transcription(wav_file):
     """
@@ -34,7 +35,7 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
     
     # store the error counts and word counts
     tot_errors,tot_words,computation_counter = 0,0,0
-    tot_wer_split = np.array([0,0,0])
+    
     num_audio = len(glob.glob('/group/teaching/asr/labs/recordings/*.wav'))
     
     # take all if num_test is None
@@ -67,7 +68,6 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
             decoder.decode(beam_width = beam_width)
             (state_path, words) = decoder.backtrace()  # you'll need to modify the backtrace() from Lab 4
                                                        # to return the words along the best path
-            print(words)
 
             # save the forward computation counter
             computation_counter += decoder.forward_counter
@@ -77,7 +77,6 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
                 print("recognized words: ",words)
                 print("correct words: ", transcription)
             error_counts = wer.compute_alignment_errors(transcription, words)
-            tot_wer_split += error_counts
             word_count = len(transcription.split())
 
             # increase the total error and word count
@@ -95,7 +94,7 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
     Number of forward computations: {},
     Number of states and arcs: {} {},
     Number of errors {} ({}) in {} words {}.
-    """.format(time_cost,computation_counter,num_states,num_arcs,tot_errors,tot_wer_split,tot_words,tot_errors/tot_words))     # you'll need to accumulate these to produce an overall Word Error Rate
+    """.format(time_cost,computation_counter,num_states,num_arcs,tot_errors,error_counts,tot_words,tot_errors/tot_words))     # you'll need to accumulate these to produce an overall Word Error Rate
     return time_cost,computation_counter,num_states,num_arcs,tot_errors,tot_words
         
         
@@ -298,31 +297,34 @@ class MyWFST:
                     next_state = f.add_state()
                     out_label = self.word_table.find(word.split('_')[0])
                     try:
-                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                     except KeyError:
-                        next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
-                    except ValueError:
-                        next_weight =  fst.Weight('log', -math.log(0.01))
+                        try:
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
+                        except KeyError:
+                            next_weight =  fst.Weight('log', -math.log(0.5))
                     f.add_arc(current_state, fst.Arc(in_label, 0, next_weight, next_state))
                     
                     current_state = next_state
                     
                     try:
-                        sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+                        sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(current_state)]))
                     except KeyError:
-                        sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
-                    except ValueError:
-                            s1_weight =  fst.Weight('log', -math.log(0.01))
+                        try:
+                            sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
+                        except KeyError:
+                            s1_weight =  fst.Weight('log', -math.log(0.5))
                     f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
                     
                     next_state = f.add_state()
                     
                     try:
-                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                     except KeyError:
-                        next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
-                    except ValueError:
-                        next_weight =  fst.Weight('log', -math.log(0.01))
+                        try:
+                             next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
+                        except KeyError:
+                             next_weight =  fst.Weight('log', -math.log(0.5))
                     
                     f.add_arc(current_state, fst.Arc(0, out_label, next_weight, next_state))
                     
@@ -345,22 +347,24 @@ class MyWFST:
                     else:
                         
                         try:
-                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                         except KeyError:
-                            next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
-                        except ValueError:
-                            next_weight =  fst.Weight('log', -math.log(0.01))
+                            try:
+                                next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
+                            except KeyError:
+                                next_weight =  fst.Weight('log', -math.log(0.5))
                     
                     f.add_arc(current_state, fst.Arc(in_label, out_label, next_weight, next_state))
                     
                     current_state = next_state
                     
                     try:
-                        sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+                        sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(current_state)]))
                     except KeyError:
-                        sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
-                    except ValueError:
-                        s1_weight =  fst.Weight('log', -math.log(0.01))
+                        try:
+                            sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
+                        except KeyError:
+                            s1_weight =  fst.Weight('log', -math.log(0.5))
                         # self-loop back to current state
                     f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
                 
@@ -379,11 +383,11 @@ class MyWFST:
             current_state = next_state
                     
             try:
-                sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+                sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(current_state)]))
             except KeyError:
                 sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
-            except ValueError:
-                s1_weight =  fst.Weight('log', -math.log(0.01))
+            except KeyError:
+                s1_weight =  fst.Weight('log', -math.log(0.5))
                 # self-loop back to current state
             f.add_arc(current_state, fst.Arc(self.state_table.find('sil_1'), 0, sl_weight, current_state))
             
@@ -397,21 +401,19 @@ class MyWFST:
                     if i==4:
                         # State 4 has 4 possible transitions: self-loop, state 1, state 2 and state 5. They need to sum up to 1 (self-loop=0.1, other transitions: uniformly distributed --> (1-0.1)/3 = 0.3
                         try:
-                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                         except KeyError:
                             next_weight = fst.Weight('log', -math.log(0.3))
-                        except ValueError:
-                            next_weight =  fst.Weight('log', -math.log(0.01))
                         f.add_arc(current_state, fst.Arc(ergodic_states[current_state]+1, 0, next_weight, next_state))
                         
                         current_state = next_state
                         
                         try:
-                            sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+                            sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(current_state)]))
                         except KeyError:
                             sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
                         except ValueError:
-                            s1_weight =  fst.Weight('log', -math.log(0.01))
+                            s1_weight =  fst.Weight('log', -math.log(0.3))
                             # self-loop back to current state
                         f.add_arc(current_state, fst.Arc(self.state_table.find('sil_5'), 0, sl_weight, current_state))
                     
@@ -429,22 +431,20 @@ class MyWFST:
 
                     next_state = f.add_state()
                     try:
-                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                     except KeyError:
-                        next_weight = fst.Weight("log",-math.log(0.9)) # Next state transition probability
-                    except ValueError:
-                        next_weight =  fst.Weight('log', -math.log(0.01))
+                        next_weight = fst.Weight("log",-math.log(0.5)) # Next state transition probability
                     
                     f.add_arc(current_state, fst.Arc(in_label, 0, next_weight, next_state))
                     current_state = next_state
                     
                     
                     try:
-                        sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(current_state)]))
+                        sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(current_state)]))
                     except KeyError:
                         sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
-                    except ValueError:
-                        s1_weight =  fst.Weight('log', -math.log(0.01))
+                    except KeyError:
+                        s1_weight =  fst.Weight('log', -math.log(0.5))
                         # self-loop back to current state
                     f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
                 else:
@@ -454,11 +454,12 @@ class MyWFST:
                     next_state = f.add_state()
                    
                     try:
-                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+str(next_state)]))
+                        next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                     except KeyError:
-                        next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
-                    except ValueError:
-                        next_weight =  fst.Weight('log', -math.log(0.01))
+                        try:
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
+                        except KeyError:
+                            next_weight =  fst.Weight('log', -math.log(0.5))
                     f.add_arc(current_state, fst.Arc(0, 0, next_weight, next_state))
                     
                     current_state = next_state
@@ -472,17 +473,15 @@ class MyWFST:
                 for key2 in ergodic_states.keys():
                     if key==key2:
                         try:
-                            self_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key)]))
+                            self_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+'-'+str(key)]))
                         except KeyError:
-                            self_weight = fst.Weight("log",-math.log(0.1)) # Self-loop probability
-                        except ValueError:
-                            self_weight =  fst.Weight('log', -math.log(0.01))
+                            self_weight = fst.Weight("log",-math.log(0.3)) # Self-loop probability
                         if ergodic_states[key]!=self.state_table.find('sil_2'):
                             f.add_arc(key, fst.Arc(ergodic_states[key],0,self_weight,key))
                     elif ergodic_states[key]==self.state_table.find('sil_4'):
                         # See above at i==4 condition
                         try:
-                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key2)]))
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+'-'+str(key2)]))
                             f.add_arc(key, fst.Arc(ergodic_states[key],0,next_weight,key2))
                         except KeyError:
                             f.add_arc(key, fst.Arc(ergodic_states[key2],0,fst.Weight("log",-math.log(0.3)),key2))
@@ -490,7 +489,7 @@ class MyWFST:
                     else:
                         # All transitions need to sum up to 1, self-loop = 0.1, ergodic transitions: uniformly distributed--> (1-0.1)/2=0.45
                         try:
-                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+str(key2)]))
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+'-'+str(key2)]))
                         except KeyError:
                             next_weight = fst.Weight("log",-math.log(0.45))
                         except ValueError:
@@ -690,7 +689,7 @@ class MyWFST:
             
         return self.bigram_probability
     
-    def generate_multiple_words_wfst_bigrams(self,word_list, weight_dictionary, bigram_dict, fin_probability=0.9):
+    def generate_multiple_words_wfst_bigrams(self,word_list, weight_dictionary, bigram_dict, fin_probability):
         """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs.
         This will currently output word labels.  
         Exercise: could you modify this function and the one above to output a single phone label instead?
@@ -1009,6 +1008,8 @@ class MyViterbiDecoder:
 
         return (best_state_sequence, best_out_sequence)
 
+
+
 class Baum_Welch:
     
     NLL_ZERO = 1e10  # define a constant representing -log(0).  This is really infinite, but approximate
@@ -1055,6 +1056,8 @@ class Baum_Welch:
         # which means that we need to process them without stepping forward in time.  
         # Don't worry too much about this!  
         self.traverse_epsilon_arcs(0)
+    
+    
         
     def traverse_epsilon_arcs(self, t):
         """Traverse arcs with <eps> on the input at time t
@@ -1088,12 +1091,67 @@ class Baum_Welch:
                     j = arc.nextstate   # ID of next state
                     
                     if self.A[t][j] != self.NLL_ZERO:
+                        
+                        try:
                 
-                        self.A[t][j] = -math.log(math.exp(-self.A[t][j])+math.exp(-(self.A[t][i]+float(arc.weight))))
+                            self.A[t][j] = -math.log(math.exp(-self.A[t][j])+math.exp(-(self.A[t][i]+float(arc.weight))))
+                    
+                        except ValueError:
+                            pass
                     
                     else:
                         
                         self.A[t][j] = self.A[t][i]+float(arc.weight)
+                   
+                    if j not in states_to_traverse:
+                            states_to_traverse.append(j)
+    
+    
+                            
+    def traverse_epsilon_arcs_back(self, t):
+        """Traverse arcs with <eps> on the input at time t
+        
+        These correspond to transitions that don't emit an observation
+        
+        We've implemented this function for you as it's slightly trickier than
+        the normal case.  You might like to look at it to see what's going on, but
+        don't worry if you can't fully follow it.
+        
+        """
+        
+        states_to_traverse = list(range(self.f.num_states())) # traverse all states
+        
+        
+        
+        while states_to_traverse:
+            
+            # Set i to the ID of the current state, the first 
+            # item in the list (and remove it from the list)
+            i = states_to_traverse.pop(0)   
+        
+#             don't bother traversing states which have zero probability
+            
+        
+            for arc in self.f.arcs(i):
+                
+                if arc.ilabel == 0:     # if <eps> transition
+                  
+                    j = arc.nextstate   # ID of next state
+                    
+                    if self.B[t+1][j] == self.NLL_ZERO:
+                        continue
+                    
+                    if self.B[t][i] != self.NLL_ZERO:
+                        
+                        try:
+                
+                            self.B[t][i] = -math.log(math.exp(-self.B[t][i])+math.exp(-(self.B[t+1][j]+float(arc.weight))))
+                        
+                        except ValueError:
+                            pass
+                    else:
+                        
+                        self.B[t][i] = self.B[t+1][j]+float(arc.weight)
                    
                     if j not in states_to_traverse:
                             states_to_traverse.append(j)
@@ -1121,12 +1179,14 @@ class Baum_Welch:
                         # this means we've found a lower-cost path to
                         # state j at time t.  We might need to add it
                         # back to the processing queue.
-                        try:
-                            if self.A[t][j] != self.NLL_ZERO:
+#                         try:
+                        if self.A[t][j] != self.NLL_ZERO:
+#                               print(self.A[t][j])
+                            try:
                                 self.A[t][j] = -math.log(math.exp(-self.A[t][j])+math.exp(-(self.A[t-1][i]+float(arc.weight)-self.om.log_observation_probability(
                                 self.f.input_symbols().find(arc.ilabel),t))))
-                        except ValueError:
-                            pass
+                            except ValueError:
+                                pass
                         else:
                             self.A[t][j] = self.A[t-1][i]+float(arc.weight)-self.om.log_observation_probability(
                             self.f.input_symbols().find(arc.ilabel),t)
@@ -1138,12 +1198,19 @@ class Baum_Welch:
     def finalise_decoding(self):
         for state in self.f.states():
             final_weight = float(self.f.final(state))
+#             print(final_weight)
             if self.A[-1][state] != self.NLL_ZERO:
                 if final_weight == math.inf:
                     self.A[-1][state] = self.NLL_ZERO  # effectively says that we can't end in this state
                 else:
+#                     print('eppa')
                     self.A[-1][state] += final_weight
                     self.B[-1][state] = final_weight
+#                     print(self.B[-1][state])
+            try:
+                self.P = -math.log(sum([math.exp(-x) for x in self.A[-1] if x < self.NLL_ZERO]))
+            except:
+                self.P = None
         
                 
     def forward(self):
@@ -1152,11 +1219,17 @@ class Baum_Welch:
         t = 1
         while t <= self.om.observation_length():
             self.forward_step(t)
+            self.traverse_epsilon_arcs(t)
             t+=1
         self.finalise_decoding()
+        self.traverse_epsilon_arcs_back(self.om.observation_length()-1)
         t = self.om.observation_length()-1
         while t>=0:
+            
             self.back_pass(t)
+            
+            self.traverse_epsilon_arcs_back(t)
+            
             t-=1
    
             
@@ -1180,12 +1253,13 @@ class Baum_Welch:
                     # this means we've found a lower-cost path to
                     # state j at time t.  We might need to add it
                     # back to the processing queue.
-                    try:
-                        if self.B[t][i]!=self.NLL_ZERO:
+#                     try:
+                    if self.B[t][i]!=self.NLL_ZERO:
+                        try:
                             self.B[t][i] = -math.log(math.exp(-self.B[t][i])+math.exp(-(self.B[t+1][j]+float(arc.weight)-self.om.log_observation_probability(
                             self.f.input_symbols().find(arc.ilabel),t+1))))
-                    except ValueError:
-                        pass
+                        except ValueError:
+                            pass
                     else:
                         self.B[t][i] = self.B[t+1][j]+float(arc.weight)-self.om.log_observation_probability(
                         self.f.input_symbols().find(arc.ilabel),t+1)
@@ -1203,42 +1277,84 @@ class Baum_Welch:
                 if arc.ilabel != 0:
                     
                     j = arc.nextstate
-                    arc_occupation = sum([(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
-                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][j]) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][j]!=self.NLL_ZERO])
+                    normalizer = self.om.observation_length()
+#                     print(normalizer)
+                    arc_occupation = special.logsumexp([-(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
+                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][j]-normalizer) for t in range(1,self.om.observation_length()) if self.A[t][i]<self.NLL_ZERO and self.B[t+1][j]<self.NLL_ZERO])
                         
+                       
+                    total_arc = special.logsumexp([-(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
+                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][arc.nextstate]-normalizer) for arc in self.f.arcs(i) for t in range(1,self.om.observation_length()) if self.A[t][i]<self.NLL_ZERO and self.B[t+1][arc.nextstate]<self.NLL_ZERO and arc.ilabel!=0])
                         
-                    total_arc = sum([(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
-                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][arc.nextstate]) for arc in self.f.arcs(i) for t in range(1,self.om.observation_length()) if self.A[t][i]!=self.NLL_ZERO and self.B[t+1][arc.nextstate]!=self.NLL_ZERO])
-                        
-                    if str(i)+str(j) not in weight_dictionary:
-                            weight_dictionary[str(i)+str(j)]=[arc_occupation,total_arc]
+                    if str(i)+'-'+str(j) not in weight_dictionary:
+                        if arc_occupation > 100:
+                            normalizer = arc_occupation-100
+                            arc_occupation -= normalizer
+                            total_arc -= normalizer
+                        weight_dictionary[str(i)+'-'+str(j)]=[arc_occupation,total_arc]
                     else:
-                            weight_dictionary[str(i)+str(j)]=[weight_dictionary[str(i)+str(j)][0]+arc_occupation,
-                                                                  weight_dictionary[str(i)+str(j)][1]+total_arc]
+#                         print(arc_occupation, weight_dictionary[str(i)+'-'+str(j)][0])
+                        
+                        if arc_occupation > 100:
+                            normalizer = arc_occupation-100
+                            arc_occupation -= normalizer
+                            total_arc -= normalizer
+                        
+                        if total_arc-arc_occupation>1:
+                            continue
+#       
+                        weight_dictionary[str(i)+'-'+str(j)]=[special.logsumexp([weight_dictionary[str(i)+'-'+str(j)][0],arc_occupation]),
+                                                                  special.logsumexp([weight_dictionary[str(i)+'-'+str(j)][1],total_arc])]
+  
 
                         
             
         return weight_dictionary
     
     
-def train_Baum_Welch(f, n, save=False, filename = 'weight_dictionary.txt',lexicon='lexicon.txt'):
-    
+def train_Baum_Welch(f, n, save=False, filename = 'weight_dictionary.txt',lexicon='lexicon.txt', num_test=180):
+    check_point = None
     for i in range(n):
         weight_dictionary = {}
+        
         print(f'Round {str(i+1)} of Baum-Welch...')
-        with tqdm(total=len(glob.glob('/group/teaching/asr/labs/recordings/*.wav'))) as progressbar:
-            for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
-                progressbar.update(1)
-                re_est = Baum_Welch(f, wav_file)
-                re_est.forward()
-                weight_dictionary = re_est.forward_backward(weight_dictionary)
-            weight_dictionary = {k:v[0]/v[1] for k,v in weight_dictionary.items()}
-            obj = MyWFST(lexicon)
-            f = obj.create_wfst_word_output(weight_dictionary = weight_dictionary)
-    if save:
-        with open(filename, 'w') as f:
-            for key, value in weight_dictionary.items():
-                f.write(str(key)+' '+str(value)+'\n')
+        with tqdm(total=num_test) as progressbar:
+            counter = 0
+            try:
+                for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
+                    progressbar.update(1)
+                    re_est = Baum_Welch(f, wav_file)
+                    re_est.forward()
+                    weight_dictionary = re_est.forward_backward(weight_dictionary)
+                    counter += 1
+                    if counter == num_test:
+                        break
+                print('Normalising weight_dictionary...')
+                weight_dictionary = normalise_weight_dictionary(weight_dictionary)
+                if check_point is not None:
+                    stop = early_stop(weight_dictionary, check_point)
+                else:
+                    stop = False
+                if stop:
+                    print('Baum Welch converged after {} iterations: early stop'.format(str(i)))
+                    return weight_dictionary
+                print('Saving current weight_dictionary')
+                check_point = weight_dictionary
+                obj = MyWFST(lexicon)
+                print('Maximisation step (re-generating WFST with new weights)...')
+                f = obj.create_wfst_word_output(weight_dictionary = weight_dictionary)
+                
+            except Exception as e:
+                print(e)
+                return check_point
+    try:
+        if save:
+            with open(filename, 'w') as f:
+                for key, value in weight_dictionary.items():
+                    f.write(str(key)+' '+str(value)+'\n')
+    except Exception as e:
+        print(e)
+        return check_point
     return weight_dictionary
 
 def load_weight_dictionary(filename = 'weight_dictionary.txt'):
@@ -1247,3 +1363,32 @@ def load_weight_dictionary(filename = 'weight_dictionary.txt'):
         for line in f:
             weight_dictionary[line.split()[0]] = float((line.split()[1]).rstrip())
     return weight_dictionary
+
+def normalise_weight_dictionary(weight_dictionary):
+    weight_dictionary = {k:(math.exp(v[0]-v[1])) for k,v in weight_dictionary.items()}
+    new_weights = {}
+    for index, item in enumerate(weight_dictionary.items()):
+        try:
+            if item[0].split('-')[0]==list(weight_dictionary.keys())[index+1].split('-')[0]:
+                if math.floor(item[1]*100)/100>=1:
+                    value = 0.99
+                elif math.floor(item[1]*100)/100==0:
+                    value = 0.01
+                else:
+                    value = math.floor(item[1]*100)/100
+                new_weights[item[0]] = value
+                new_weights[list(weight_dictionary.keys())[index+1]] = round((1 - new_weights[item[0]])*100)/100
+            elif item[0].split('-')[1]!=list(weight_dictionary.keys())[index+1].split('-')[0]:
+                new_weights[item[0]] = 0.5
+        except IndexError:
+            new_weights[item[0]] = 0.5
+    return new_weights
+
+def early_stop(weight_dictionary, check_point):
+    stop = True
+    for k,v in weight_dictionary.items():
+        if check_point[k] == v:
+            pass
+        else:
+            return False
+    return stop
