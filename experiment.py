@@ -67,7 +67,7 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
             decoder.decode(beam_width = beam_width)
             (state_path, words) = decoder.backtrace()  # you'll need to modify the backtrace() from Lab 4
                                                        # to return the words along the best path
-            print(words)
+#             print(words)
 
             # save the forward computation counter
             computation_counter += decoder.forward_counter
