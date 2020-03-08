@@ -714,16 +714,16 @@ class MyWFST:
             if word!= 'sil':
                 # create the start state
         
-                current_state = f.add_state()
-        
-                f.add_arc(start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(bigram_dict['<s>'+'/'+word])), current_state))
-        
+                start_probability = bigram_dict['<s>'+'/'+word]
+                
+                current_state = start_state
+                
                 counter = 1
     
                 # iterate over all the phones in the word
                 for phone in self.lex[word]:   # will raise an exception if word is not in the lexicon
         
-                    current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary, fin_probability)
+                    current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary, fin_probability, start_probability)
             
                     counter += 1
     
@@ -741,17 +741,18 @@ class MyWFST:
                 for word2 in word_list:
                 
                     if word2 != 'sil':
-            
-                        current_state = f.add_state()
-        
-                        f.add_arc(second_start_state, fst.Arc(0, 0, fst.Weight("log",-math.log(bigram_dict[word+'/'+word2])), current_state))
-        
+
+                        
+                        start_probability = bigram_dict[word+'/'+word2]
+                        
+                        current_state = second_start_state        
+                
                         counter = 1
     
                         # iterate over all the phones in the word
                         for phone in self.lex[word2]:   # will raise an exception if word is not in the lexicon
         
-                            current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word2]),word2, weight_dictionary, fin_probability)
+                            current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word2]),word2, weight_dictionary, fin_probability, start_probability)
             
                             counter += 1
     
@@ -763,23 +764,26 @@ class MyWFST:
                             ends[word2] += [current_state]
                 
                     else:
-                    
-                        current_state = f.add_state()
-                    
-                        f.add_arc(second_start_state, fst.Arc(0,0,fst.Weight("log",-math.log(0.1)),current_state))
+
+
+                        start_probability = 0.1
+    
+                        current_state = second_start_state
             
-                        current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word2, weight_dictionary, fin_probability)
+                        current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word2, weight_dictionary, fin_probability, start_probability)
             
                         f.add_arc(current_state, fst.Arc(0,0,fst.Weight("log",-math.log(1)),second_start_state))
                     
                     
         
             else:
-                current_state = f.add_state()
+
+
+                start_probability = 0.1
+
+                current_state = start_state
             
-                f.add_arc(start_state, fst.Arc(0,0,fst.Weight("log",-math.log(0.1)),current_state))
-            
-                current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary, fin_probability)
+                current_state = self.generate_phone_wfst_no_output(f, current_state, phone, 3, counter,len(self.lex[word]),word, weight_dictionary, fin_probability, start_probability)
             
                 f.add_arc(current_state, fst.Arc(0,0,fst.Weight("log",-math.log(1)),start_state))
             
