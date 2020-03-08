@@ -1016,7 +1016,7 @@ class MyViterbiDecoder:
 
 
 
-class Baum_Welch:
+lass Baum_Welch:
     
     NLL_ZERO = 1e10  # define a constant representing -log(0).  This is really infinite, but approximate
                      # it here with a very large number
@@ -1277,44 +1277,81 @@ class Baum_Welch:
         while states_to_traverse:
                 
             i = states_to_traverse.pop(0)
+            if self.P:
+                normalizer = self.P
+            else:
+                normalizer = 1000 # If self.P is undefined it is likely that the neg logprobability will result in a very high number
+                
+            
+            # below commented line perform calculation of total arc probability with list comprehension
+            
+#             total_arc = special.logsumexp([-(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
+#                                 self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][arc.nextstate]-normalizer) for arc in self.f.arcs(i) for t in range(1,self.om.observation_length()) if self.A[t][i]<self.NLL_ZERO and self.B[t+1][arc.nextstate]<self.NLL_ZERO and arc.ilabel!=0])
+            
+            # Calculate the total arcs probability (denominator in Baum Welch formula) for state i (this will be shared between the arcs cominng from state i)
+            total_arc = []
+            for t in range(1,self.om.observation_length()):
+                for arc in self.f.arcs(i):
+                    j = arc.nextstate
+                    # If self.A[t][i] or self.B[t+1][j] are > self.NLL_ZERO, it would correspond to multiply the probability for 0,
+                    # therefore cancelling out. If arc.ilabel == 0, there is no observation model
+                    if self.A[t][i]<self.NLL_ZERO and self.B[t+1][j]<self.NLL_ZERO and arc.ilabel!=0:
+                        # Compute the normalised partial result for arc occupation at time t
+                        total_arc.append(-(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
+                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][j]-normalizer))
+            
+            try:
+                # sum all arcs occupation being accumulated (sum in logspace require the scipy's function logsumexp)
+                total_arc = special.logsumexp(total_arc)
+            
+            except:
+                # If total_arc list is empty, it means that we are dealing with an epsilon transition: at the moment we don't calculate those
+                continue
                 
             for arc in self.f.arcs(i):
+                
+                
                     
                 if arc.ilabel != 0:
                     
                     j = arc.nextstate
-                    normalizer = self.om.observation_length()
-#                     print(normalizer)
+                    
+                    # Calculate arc occupation for a single arc: the process is similar to calculate the total arc above
                     arc_occupation = special.logsumexp([-(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
                                 self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][j]-normalizer) for t in range(1,self.om.observation_length()) if self.A[t][i]<self.NLL_ZERO and self.B[t+1][j]<self.NLL_ZERO])
-                        
-                       
-                    total_arc = special.logsumexp([-(self.A[t][i]+float(arc.weight)-self.om.log_observation_probability(
-                                self.f.input_symbols().find(arc.ilabel),t+1)+self.B[t+1][arc.nextstate]-normalizer) for arc in self.f.arcs(i) for t in range(1,self.om.observation_length()) if self.A[t][i]<self.NLL_ZERO and self.B[t+1][arc.nextstate]<self.NLL_ZERO and arc.ilabel!=0])
-                        
+                    
+                    # If first step of Baum Welch, initialise the weight dictionary with arc occupation and total arc for each state-state entry
                     if str(i)+'-'+str(j) not in weight_dictionary:
-                        if arc_occupation > 100:
-                            normalizer = arc_occupation-100
+                        if arc_occupation < -100:
+                            # Normalise the results for numerical stability: arc occupation will be fixed at -100, while the total arc will  move
+                            normalizer = arc_occupation+100
                             arc_occupation -= normalizer
-                            total_arc -= normalizer
-                        weight_dictionary[str(i)+'-'+str(j)]=[arc_occupation,total_arc]
+                            # define the normalised total arc
+                            total_arc_part = total_arc - normalizer
+                        else:
+                            # If results are in an acceptable range (between -100 and 0) no need to re-normalise
+                            total_arc_part = total_arc
+#                       
+                        weight_dictionary[str(i)+'-'+str(j)]=[arc_occupation,total_arc_part]
+    
                     else:
-#                         print(arc_occupation, weight_dictionary[str(i)+'-'+str(j)][0])
-                        
-                        if arc_occupation > 100:
-                            normalizer = arc_occupation-100
+                        # Iteratively sum the results from previous steps of baum welch to get arc occupation and total arc across all utterances
+                        if arc_occupation < -100:
+                            normalizer = arc_occupation+100
                             arc_occupation -= normalizer
-                            total_arc -= normalizer
-                        
-                        if total_arc-arc_occupation>1:
+                            total_arc_part = total_arc - normalizer
+                        else:
+                            total_arc_part = total_arc
+                        # Because of the fixed normalisation at the beginning, we noticed that very long sentences cause the algorithm to fail
+                        # For now the solution is to skip these sentences
+                        if arc_occupation - total_arc_part < -100:
                             continue
+                        
 #       
                         weight_dictionary[str(i)+'-'+str(j)]=[special.logsumexp([weight_dictionary[str(i)+'-'+str(j)][0],arc_occupation]),
-                                                                  special.logsumexp([weight_dictionary[str(i)+'-'+str(j)][1],total_arc])]
+                                                                  special.logsumexp([weight_dictionary[str(i)+'-'+str(j)][1],total_arc_part])]
   
 
-                        
-            
         return weight_dictionary
     
     
