@@ -304,7 +304,7 @@ class MyWFST:
                         try:
                             next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
                         except KeyError:
-                            next_weight =  fst.Weight('log', -math.log(0.5))
+                            next_weight =  fst.Weight('log', -math.log(0.01))
                     f.add_arc(current_state, fst.Arc(in_label, 0, next_weight, next_state))
                     
                     current_state = next_state
@@ -315,7 +315,7 @@ class MyWFST:
                         try:
                             sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
                         except KeyError:
-                            s1_weight =  fst.Weight('log', -math.log(0.5))
+                            s1_weight =  fst.Weight('log', -math.log(0.99))
                     f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
                     
                     next_state = f.add_state()
@@ -326,7 +326,7 @@ class MyWFST:
                         try:
                              next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
                         except KeyError:
-                             next_weight =  fst.Weight('log', -math.log(0.5))
+                             next_weight =  fst.Weight('log', -math.log(0.01))
                     
                     f.add_arc(current_state, fst.Arc(0, out_label, next_weight, next_state))
                     
@@ -354,7 +354,7 @@ class MyWFST:
                             try:
                                 next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
                             except KeyError:
-                                next_weight =  fst.Weight('log', -math.log(0.5))
+                                next_weight =  fst.Weight('log', -math.log(0.01))
                     
                     f.add_arc(current_state, fst.Arc(in_label, out_label, next_weight, next_state))
                     
@@ -366,7 +366,7 @@ class MyWFST:
                         try:
                             sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
                         except KeyError:
-                            s1_weight =  fst.Weight('log', -math.log(0.5))
+                            s1_weight =  fst.Weight('log', -math.log(0.99))
                         # self-loop back to current state
                     f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
                 
@@ -387,9 +387,7 @@ class MyWFST:
             try:
                 sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(current_state)]))
             except KeyError:
-                sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
-            except KeyError:
-                s1_weight =  fst.Weight('log', -math.log(0.5))
+                sl_weight =  fst.Weight('log', -math.log(0.5))
                 # self-loop back to current state
             f.add_arc(current_state, fst.Arc(self.state_table.find('sil_1'), 0, sl_weight, current_state))
             
@@ -405,7 +403,7 @@ class MyWFST:
                         try:
                             next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                         except KeyError:
-                            next_weight = fst.Weight('log', -math.log(0.3))
+                            next_weight = fst.Weight('log', -math.log(0.25))
                         f.add_arc(current_state, fst.Arc(ergodic_states[current_state]+1, 0, next_weight, next_state))
                         
                         current_state = next_state
@@ -413,9 +411,7 @@ class MyWFST:
                         try:
                             sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(current_state)]))
                         except KeyError:
-                            sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
-                        except ValueError:
-                            s1_weight =  fst.Weight('log', -math.log(0.3))
+                            sl_weight =  fst.Weight('log', -math.log(0.5))
                             # self-loop back to current state
                         f.add_arc(current_state, fst.Arc(self.state_table.find('sil_5'), 0, sl_weight, current_state))
                     
@@ -444,9 +440,7 @@ class MyWFST:
                     try:
                         sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(current_state)]))
                     except KeyError:
-                        sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
-                    except KeyError:
-                        s1_weight =  fst.Weight('log', -math.log(0.5))
+                        sl_weight =  fst.Weight('log', -math.log(1/3))
                         # self-loop back to current state
                     f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
                 else:
@@ -458,9 +452,6 @@ class MyWFST:
                     try:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                     except KeyError:
-                        try:
-                            next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
-                        except KeyError:
                             next_weight =  fst.Weight('log', -math.log(0.5))
                     f.add_arc(current_state, fst.Arc(0, 0, next_weight, next_state))
                     
@@ -473,11 +464,11 @@ class MyWFST:
             # add ergodic connections for states 2,3,4
             for key in ergodic_states.keys():
                 for key2 in ergodic_states.keys():
-                    if key==key2:
+                    if key==key2 and ergodic_states[key]!=self.state_table.find('sil_4'):
                         try:
                             self_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+'-'+str(key)]))
                         except KeyError:
-                            self_weight = fst.Weight("log",-math.log(0.3)) # Self-loop probability
+                            self_weight = fst.Weight("log",-math.log(1/3)) # Self-loop probability
                         if ergodic_states[key]!=self.state_table.find('sil_2'):
                             f.add_arc(key, fst.Arc(ergodic_states[key],0,self_weight,key))
                     elif ergodic_states[key]==self.state_table.find('sil_4'):
@@ -486,16 +477,14 @@ class MyWFST:
                             next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+'-'+str(key2)]))
                             f.add_arc(key, fst.Arc(ergodic_states[key],0,next_weight,key2))
                         except KeyError:
-                            f.add_arc(key, fst.Arc(ergodic_states[key2],0,fst.Weight("log",-math.log(0.3)),key2))
+                            f.add_arc(key, fst.Arc(ergodic_states[key2],0,fst.Weight("log",-math.log(0.25)),key2))
                         
                     else:
                         # All transitions need to sum up to 1, self-loop = 0.1, ergodic transitions: uniformly distributed--> (1-0.1)/2=0.45
                         try:
                             next_weight = fst.Weight('log', -math.log(weight_dictionary[str(key)+'-'+str(key2)]))
                         except KeyError:
-                            next_weight = fst.Weight("log",-math.log(0.45))
-                        except ValueError:
-                            next_weight =  fst.Weight('log', -math.log(0.01))
+                            next_weight = fst.Weight("log",-math.log(1/3))
                         f.add_arc(key, fst.Arc(ergodic_states[key2],0,next_weight,key2))
             
         return current_state
