@@ -899,7 +899,11 @@ class MyViterbiDecoder:
                         # this means we've found a lower-cost path to
                         # state j at time t.  We might need to add it
                         # back to the processing queue.
-                        self.V[t][j] = self.V[t][i] + float(arc.weight)
+                        if float(self.f.final(i))== math.inf:
+                            self.V[t][j] = self.V[t][i] + float(arc.weight)
+                        else:
+                            # add the probability of being in a final state (if any). This practically penalise words insertion.
+                            self.V[t][j] = self.V[t][i] + float(arc.weight) + float(self.f.final(i))
                         
                         # save backtrace information.  In the case of an epsilon transition, 
                         # we save the identity of the best state at t-1.  This means we may not
@@ -944,7 +948,11 @@ class MyViterbiDecoder:
                         
                         # else if it is lower than the current viterbi value at time t state j, update the viterbi value and write the backpointer...
                         elif prob < self.V[t][j]:
-                            self.V[t][j] = prob
+                            # Below conditions apply the cost of being in a final state (if any) to penalise words insertion
+                            if float(self.f.final(i))== math.inf:
+                                self.V[t][j] = prob
+                            else:
+                                self.V[t][j] = prob + float(self.f.final(i))
                             self.B[t][j] = i
                             
                             # update the BEST_COST
