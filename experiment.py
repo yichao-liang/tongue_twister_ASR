@@ -35,6 +35,7 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
     
     # store the error counts and word counts
     tot_errors,tot_words,computation_counter = 0,0,0
+    tot_wer_split = np.array([0,0,0])
     
     num_audio = len(glob.glob('/group/teaching/asr/labs/recordings/*.wav'))
     
@@ -69,7 +70,6 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
             (state_path, words) = decoder.backtrace()  # you'll need to modify the backtrace() from Lab 4
                                                        # to return the words along the best path
 
-
             # save the forward computation counter
             computation_counter += decoder.forward_counter
             
@@ -82,6 +82,7 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
 
             # increase the total error and word count
             tot_errors += np.sum(np.array(error_counts))
+            tot_wer_split += error_counts
             tot_words += word_count
     
     # save the number states and arcs
@@ -95,7 +96,7 @@ def run_exp(wfst,num_test,beam_width=1e10,verbose=False):
     Number of forward computations: {},
     Number of states and arcs: {} {},
     Number of errors {} ({}) in {} words {}.
-    """.format(time_cost,computation_counter,num_states,num_arcs,tot_errors,error_counts,tot_words,tot_errors/tot_words))     # you'll need to accumulate these to produce an overall Word Error Rate
+    """.format(time_cost,computation_counter,num_states,num_arcs,tot_errors,tot_wer_split,tot_words,tot_errors/tot_words))    # you'll need to accumulate these to produce an overall Word Error Rate
     return time_cost,computation_counter,num_states,num_arcs,tot_errors,tot_words
         
         
