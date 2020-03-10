@@ -1426,10 +1426,10 @@ def normalise_weight_dictionary(weight_dictionary):
             new_weights[item[0]] = 0.99
     return new_weights
 
-def early_stop(weight_dictionary, check_point):
+def early_stop(weight_dictionary, check_point, threshold=0.01):
     stop = True
     for k,v in weight_dictionary.items():
-        if check_point[k] == v:
+        if abs(check_point[k] - v) < threshold:
             pass
         else:
             return False
