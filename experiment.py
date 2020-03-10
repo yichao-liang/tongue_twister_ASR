@@ -1421,9 +1421,9 @@ def normalise_weight_dictionary(weight_dictionary):
                 new_weights[item[0]] = value
                 new_weights[list(weight_dictionary.keys())[index+1]] = round((1 - new_weights[item[0]])*100)/100
             elif item[0].split('-')[1]!=list(weight_dictionary.keys())[index+1].split('-')[0]:
-                new_weights[item[0]] = 0.5
+                new_weights[item[0]] = 0.99
         except IndexError:
-            new_weights[item[0]] = 0.5
+            new_weights[item[0]] = 0.99
     return new_weights
 
 def early_stop(weight_dictionary, check_point):
