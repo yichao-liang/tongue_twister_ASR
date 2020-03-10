@@ -327,10 +327,7 @@ class MyWFST:
                     try:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                     except KeyError:
-                        try:
                             next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
-                        except KeyError:
-                            next_weight =  fst.Weight('log', -math.log(0.01))
                     f.add_arc(current_state, fst.Arc(in_label, 0, next_weight, next_state))
                     
                     current_state = next_state
@@ -338,10 +335,7 @@ class MyWFST:
                     try:
                         sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(current_state)]))
                     except KeyError:
-                        try:
                             sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
-                        except KeyError:
-                            s1_weight =  fst.Weight('log', -math.log(0.99))
                     f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
                     
                     next_state = f.add_state()
@@ -350,9 +344,13 @@ class MyWFST:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                     except KeyError:
                         try:
-                             next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
                         except KeyError:
-                             next_weight =  fst.Weight('log', -math.log(0.01))
+                            # The below line is used when the weights are set to the ones obtained with Baum Welch.
+                            # In that case the epsilon transition emitting the word will have a very low value, as the weight
+                            # obtained through Baum Welch didn't take it into account and, therefore the self loop for the 
+                            # previous transition was set to 1.
+                            next_weight =  fst.Weight('log', -math.log(0.0001))
                     
                     f.add_arc(current_state, fst.Arc(0, out_label, next_weight, next_state))
                     
@@ -1438,7 +1436,7 @@ def normalise_weight_dictionary(weight_dictionary):
         try:
             if item[0].split('-')[0]==list(weight_dictionary.keys())[index+1].split('-')[0]:
                 if math.floor(item[1]*100)/100>=1:
-                    value = 0.99
+                    value = 0.9999
                 elif math.floor(item[1]*100)/100==0:
                     value = 0.01
                 else:
@@ -1446,9 +1444,9 @@ def normalise_weight_dictionary(weight_dictionary):
                 new_weights[item[0]] = value
                 new_weights[list(weight_dictionary.keys())[index+1]] = round((1 - new_weights[item[0]])*100)/100
             elif item[0].split('-')[1]!=list(weight_dictionary.keys())[index+1].split('-')[0]:
-                new_weights[item[0]] = 0.99
+                new_weights[item[0]] = 0.9999
         except IndexError:
-            new_weights[item[0]] = 0.99
+            new_weights[item[0]] = 0.9999
     return new_weights
 
 def early_stop(weight_dictionary, check_point):
