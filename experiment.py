@@ -173,8 +173,34 @@ class MyWFST:
                     count[line[0]] += 1
                     self.lex[line[0]+'_'+str(count[line[0]])] = line[1:]
 
+    
+    def parse_alternative_lexicon(self,lex_file):
+        """
+        Parse the lexicon file and return it in dictionary form.
 
+        Args:
+            lex_file (str): filename of lexicon file with structure '<word> <phone1> <phone2>...'
+                            eg. peppers p eh p er z
 
+        Returns:
+            lex (dict): dictionary mapping words to list of phones
+        """
+    
+        lex = {}  # create a dictionary for the lexicon entries (this could be a problem with larger lexica)
+        count = {}
+        with open(lex_file, 'r') as f:
+            for line in f:
+                line = line.split()  # split at each space
+                if line[0] not in lex:
+                    count[line[0]] = 0
+                    lex[line[0]] = line[1:]  # first field the word, the rest is the phones
+                else:
+                    
+                    count[line[0]] += 1
+                    lex[line[0]+'_'+str(count[line[0]])] = line[1:]
+        return lex     
+
+    
     def generate_symbol_tables(self, n=3):
         '''
         Return word, phone and state symbol tables based on the supplied lexicon
@@ -505,7 +531,7 @@ class MyWFST:
     def create_unigram_probabilities(self,n=None, sil_probability=0.1):
         unigram_counts = {}
         tot = 0
-        lex = [a.split('_')[0] for a in self.lex.keys()]
+        lex = [a.split('_')[0] for a in self.parse_alternative_lexicon('lexicon.txt').keys()]
         if n==None:
             for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
                 for word in self.read_transcription(wav_file).split():
@@ -614,6 +640,7 @@ class MyWFST:
     def create_bigram_probabilities(self, n=None, sil_probability=0.1):
         unigram_counts = {'<s>':0}
         bigram_counts = {}
+        lex = [a.split('_')[0] for a in self.parse_alternative_lexicon('lexicon.txt').keys()]+['<s>']
         if n==None:
             for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
                 unigram_counts['<s>']+=1
@@ -676,7 +703,7 @@ class MyWFST:
                     counter += 1
             
         # Create bigram probabilities from accumulated counts, discounting uniformly 0.1 for silence (the value can be changed)
-        self.bigram_probability = {k:(v/unigram_counts[k.split('/')[0]])-(sil_probability/len(unigram_counts)) for k,v in bigram_counts.items()}
+        self.bigram_probability = {k:((v/unigram_counts[k.split('/')[0]])-(sil_probability/len(unigram_counts)))/lex.count(k.split('/')[0]) for k,v in bigram_counts.items()}
             
         return self.bigram_probability
     
@@ -703,7 +730,7 @@ class MyWFST:
             if word!= 'sil':
                 # create the start state
         
-                start_probability = bigram_dict['<s>'+'/'+word]
+                start_probability = bigram_dict['<s>'+'/'+word.split('_')[0]]
                 
                 current_state = start_state
                 
@@ -732,7 +759,7 @@ class MyWFST:
                     if word2 != 'sil':
 
                         
-                        start_probability = bigram_dict[word+'/'+word2]
+                        start_probability = bigram_dict[word.split('_')[0]+'/'+word2.split('_')[0]]
                         
                         current_state = second_start_state        
                 
@@ -783,7 +810,7 @@ class MyWFST:
         return f
     
     def create_wfst_bigrams(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=None):
-        self.create_unigram_probabilities()
+        self.create_bigram_probabilities()
         f = self.generate_multiple_words_wfst_bigrams([k for k in self.lex.keys()], weight_dictionary, self.bigram_probability, fin_probability)
 #         f.set_input_symbols(self.state_table)
 #         f.set_output_symbols(self.word_table)
