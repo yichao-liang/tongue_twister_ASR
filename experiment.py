@@ -125,13 +125,13 @@ class MyWFST:
         self.parse_lexicon(lexicon)
         self.generate_symbol_tables()
         
-    def create_wfst_word_output(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1, 'next':0.9}, fin_probability=None):
+    def create_wfst_word_output(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1, 'next':0.9}, fin_probability=None, sil_probability=0.1):
         '''
         wfst with word output
         '''
         
         if lm == 'unigram':
-            f = self.create_wfst_unigram(fin_probability=fin_probability)
+            f = self.create_wfst_unigram(fin_probability=fin_probability, sil_probability=sil_probability)
         elif lm == 'bigram':
             f = self.create_wfst_bigrams(fin_probability=fin_probability)
         else:
@@ -529,6 +529,8 @@ class MyWFST:
     def create_unigram_probabilities(self,n=None, sil_probability=0.1):
         unigram_counts = {}
         tot = 0
+        if 'sil' not in self.lex.keys():
+            sil_probability = 0
         lex = [a.split('_')[0] for a in self.parse_alternative_lexicon('lexicon.txt').keys()]
         if n==None:
             for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
@@ -555,7 +557,7 @@ class MyWFST:
          
         return self.unigram_probability
     
-    def generate_multiple_words_wfst_unigram(self, word_list, unigram_probabilities, weight_dictionary, fin_probability):
+    def generate_multiple_words_wfst_unigram(self, word_list, unigram_probabilities, weight_dictionary, fin_probability, sil_probability=0.1):
         """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs.
         This will currently output word labels.  
         Exercise: could you modify this function and the one above to output a single phone label instead?
@@ -576,7 +578,7 @@ class MyWFST:
             # create the start state
             if word=='sil':
                 
-                start_probability = 0.1
+                start_probability = sil_probability
             
                 current_state = start_state
             
@@ -623,9 +625,9 @@ class MyWFST:
         return f
     
     
-    def create_wfst_unigram(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=None):
-        self.create_unigram_probabilities()
-        f = self.generate_multiple_words_wfst_unigram([k for k in self.lex.keys()], self.unigram_probability, weight_dictionary, fin_probability)
+    def create_wfst_unigram(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=None, sil_probability=0.1):
+        self.create_unigram_probabilities(sil_probability=sil_probability)
+        f = self.generate_multiple_words_wfst_unigram([k for k in self.lex.keys()], self.unigram_probability, weight_dictionary, fin_probability, sil_probability=sil_probability)
 #         f.set_input_symbols(self.state_table)
 #         f.set_output_symbols(self.word_table)
         if tree_struc:
