@@ -1013,7 +1013,9 @@ class MyViterbiDecoder:
 
 
 
-lass Baum_Welch:
+class Baum_Welch:
+    
+    
     
     NLL_ZERO = 1e10  # define a constant representing -log(0).  This is really infinite, but approximate
                      # it here with a very large number
