@@ -125,13 +125,13 @@ class MyWFST:
         self.parse_lexicon(lexicon)
         self.generate_symbol_tables()
         
-    def create_wfst_word_output(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1, 'next':0.9}, fin_probability=None):
+    def create_wfst_word_output(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1, 'next':0.9}, fin_probability=None, sil_probability=0.1):
         '''
         wfst with word output
         '''
         
         if lm == 'unigram':
-            f = self.create_wfst_unigram(fin_probability=fin_probability)
+            f = self.create_wfst_unigram(fin_probability=fin_probability, sil_probability=sil_probability)
         elif lm == 'bigram':
             f = self.create_wfst_bigrams(fin_probability=fin_probability)
         else:
@@ -327,10 +327,7 @@ class MyWFST:
                     try:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                     except KeyError:
-                        try:
                             next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
-                        except KeyError:
-                            next_weight =  fst.Weight('log', -math.log(0.01))
                     f.add_arc(current_state, fst.Arc(in_label, 0, next_weight, next_state))
                     
                     current_state = next_state
@@ -338,10 +335,7 @@ class MyWFST:
                     try:
                         sl_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(current_state)]))
                     except KeyError:
-                        try:
                             sl_weight = fst.Weight('log', -math.log(weight_dictionary['self-loop']))  # weight for self-loop
-                        except KeyError:
-                            s1_weight =  fst.Weight('log', -math.log(0.99))
                     f.add_arc(current_state, fst.Arc(in_label, 0, sl_weight, current_state))
                     
                     next_state = f.add_state()
@@ -350,9 +344,13 @@ class MyWFST:
                         next_weight = fst.Weight('log', -math.log(weight_dictionary[str(current_state)+'-'+str(next_state)]))
                     except KeyError:
                         try:
-                             next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
+                            next_weight = fst.Weight('log', -math.log(weight_dictionary['next'])) # weight to next state
                         except KeyError:
-                             next_weight =  fst.Weight('log', -math.log(0.01))
+                            # The below line is used when the weights are set to the ones obtained with Baum Welch.
+                            # In that case the epsilon transition emitting the word will have a very low value, as the weight
+                            # obtained through Baum Welch didn't take it into account and, therefore the self loop for the 
+                            # previous transition was set to 1.
+                            next_weight =  fst.Weight('log', -math.log(0.0001))
                     
                     f.add_arc(current_state, fst.Arc(0, out_label, next_weight, next_state))
                     
@@ -531,6 +529,8 @@ class MyWFST:
     def create_unigram_probabilities(self,n=None, sil_probability=0.1):
         unigram_counts = {}
         tot = 0
+        if 'sil' not in self.lex.keys():
+            sil_probability = 0
         lex = [a.split('_')[0] for a in self.parse_alternative_lexicon('lexicon.txt').keys()]
         if n==None:
             for wav_file in glob.glob('/group/teaching/asr/labs/recordings/*.wav'):
@@ -557,7 +557,7 @@ class MyWFST:
          
         return self.unigram_probability
     
-    def generate_multiple_words_wfst_unigram(self, word_list, unigram_probabilities, weight_dictionary, fin_probability):
+    def generate_multiple_words_wfst_unigram(self, word_list, unigram_probabilities, weight_dictionary, fin_probability, sil_probability=0.1):
         """ Generate a WFST for any word in the lexicon, composed of 3-state phone WFSTs.
         This will currently output word labels.  
         Exercise: could you modify this function and the one above to output a single phone label instead?
@@ -578,7 +578,7 @@ class MyWFST:
             # create the start state
             if word=='sil':
                 
-                start_probability = 0.1
+                start_probability = sil_probability
             
                 current_state = start_state
             
@@ -625,9 +625,9 @@ class MyWFST:
         return f
     
     
-    def create_wfst_unigram(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=None):
-        self.create_unigram_probabilities()
-        f = self.generate_multiple_words_wfst_unigram([k for k in self.lex.keys()], self.unigram_probability, weight_dictionary, fin_probability)
+    def create_wfst_unigram(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=None, sil_probability=0.1):
+        self.create_unigram_probabilities(sil_probability=sil_probability)
+        f = self.generate_multiple_words_wfst_unigram([k for k in self.lex.keys()], self.unigram_probability, weight_dictionary, fin_probability, sil_probability=sil_probability)
 #         f.set_input_symbols(self.state_table)
 #         f.set_output_symbols(self.word_table)
         if tree_struc:
@@ -1440,7 +1440,7 @@ def normalise_weight_dictionary(weight_dictionary):
         try:
             if item[0].split('-')[0]==list(weight_dictionary.keys())[index+1].split('-')[0]:
                 if math.floor(item[1]*100)/100>=1:
-                    value = 0.99
+                    value = 0.9999
                 elif math.floor(item[1]*100)/100==0:
                     value = 0.01
                 else:
@@ -1448,9 +1448,9 @@ def normalise_weight_dictionary(weight_dictionary):
                 new_weights[item[0]] = value
                 new_weights[list(weight_dictionary.keys())[index+1]] = round((1 - new_weights[item[0]])*100)/100
             elif item[0].split('-')[1]!=list(weight_dictionary.keys())[index+1].split('-')[0]:
-                new_weights[item[0]] = 0.99
+                new_weights[item[0]] = 0.9999
         except IndexError:
-            new_weights[item[0]] = 0.99
+            new_weights[item[0]] = 0.9999
     return new_weights
 
 def early_stop(weight_dictionary, check_point, threshold=0.01):
