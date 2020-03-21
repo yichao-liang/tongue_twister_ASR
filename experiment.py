@@ -888,26 +888,26 @@ class MyWFST:
     
 #         return f
     
-#     def create_wfst_bigrams(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=None):
-#         self.create_bigram_probabilities()
-#         f = self.generate_multiple_words_wfst_bigrams([k for k in self.lex.keys()], weight_dictionary, self.bigram_probability, fin_probability)
-# #         f.set_input_symbols(self.state_table)
-# #         f.set_output_symbols(self.word_table)
-#         if tree_struc:
-#             f = fst.determinize(f)
-#         if weight_push:
-#             f = f.push()
-#         return f
-
-#     def create_wfst_bigrams_try(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=None):
-#         f = self.generate_multiple_words_wfst_bigrams(['a','of','sil'], weight_dictionary, self.bigram_probability, fin_probability)
+    def create_wfst_bigrams(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=None):
+        self.create_bigram_probabilities()
+        f = self.generate_multiple_words_wfst_bigrams([k for k in self.lex.keys()], weight_dictionary, self.bigram_probability, fin_probability)
 #         f.set_input_symbols(self.state_table)
 #         f.set_output_symbols(self.word_table)
-#         if tree_struc:
-#             f = fst.determinize(f)
-#         if weight_push:
-#             f = f.push()
-#         return f
+        if tree_struc:
+            f = fst.determinize(f)
+        if weight_push:
+            f = f.push()
+        return f
+
+    def create_wfst_bigrams_try(self, lm=None, tree_struc=False, weight_push=False, weight_dictionary={'self-loop':0.1,'next':0.9}, fin_probability=None):
+        f = self.generate_multiple_words_wfst_bigrams(['a','of','sil'], weight_dictionary, self.bigram_probability, fin_probability)
+        f.set_input_symbols(self.state_table)
+        f.set_output_symbols(self.word_table)
+        if tree_struc:
+            f = fst.determinize(f)
+        if weight_push:
+            f = f.push()
+        return f
     
     
 
