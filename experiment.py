@@ -777,7 +777,7 @@ class MyWFST:
                 if word!='sil':
                     in_label = self.state_table.find('{}_{}'.format(self.lex[word][0], 1))
                     bigr_probability = bigram_dict[key.split('_')[0]+'/'+word.split('_')[0]]
-                    f.add_arc(second_starts[key], fst.Arc(in_label, 0, fst.Weight("log",bigr_probability), first_states[word]))
+                    f.add_arc(second_starts[key], fst.Arc(in_label, 0, fst.Weight("log",-math.log(bigr_probability)), first_states[word]))
                     if sil_start:
                         sil_label = self.state_table.find('{}_{}'.format('sil', 1))
                         f.add_arc(second_starts[key], fst.Arc(sil_label, 0, fst.Weight("log",0.1), sil_start))
